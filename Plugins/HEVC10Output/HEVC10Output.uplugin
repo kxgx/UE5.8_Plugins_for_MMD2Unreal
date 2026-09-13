@@ -1,0 +1,25 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "HEVC 10-bit Output",
+	"Description": "Adds a 10-bit H.265 (HEVC) MP4 output to Movie Render Graph / Movie Render Queue. Frames are piped straight into ffmpeg over stdin while rendering, so there are no intermediate image files and encoding runs in parallel with the render.",
+	"Category": "Rendering",
+	"CreatedBy": "DSH",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "HEVC10Output",
+			"Type": "Runtime",
+			"LoadingPhase": "PostEngineInit"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "MovieRenderPipeline",
+			"Enabled": true
+		}
+	]
+}

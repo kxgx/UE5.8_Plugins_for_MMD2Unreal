@@ -1,0 +1,33 @@
+# Unreal Engine generated
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+.vscode/
+*.VC.db
+*.opensdf
+*.sdf
+*.sln
+*.suo
+*.xcodeproj
+*.xcworkspace
+
+# Compiled
+*.dll
+*.exe
+*.lib
+*.exp
+*.obj
+*.pdb
+*.so
+*.dylib
+
+# Keep the module manifests out, they are regenerated
+*.modules
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

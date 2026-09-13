@@ -1,0 +1,19 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "MMD Sequencer Preview",
+	"Description": "While a Level Sequence is open in Sequencer, drives animations imported by MMD2Unreal (VMD motion) and MMD camera actors (VMD camera) so they preview live in the editor viewport, in sync with the Sequencer timeline. Editor-only; never modifies assets or levels.",
+	"Category": "Animation",
+	"CreatedBy": "DSH",
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "MMDSequencerPreview",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
+		}
+	]
+}
