@@ -151,4 +151,6 @@ AnimSequence.AssetUserData 中存在类名为 "MMDVmdAssetUserData" 的条目
 
 ## 许可
 
-未指定。使用前请自行确认适合你的场景。
+[MIT](LICENSE) © 2026 kxgx
+
+可自由使用、修改、分发，包括商业用途，保留版权声明即可。
