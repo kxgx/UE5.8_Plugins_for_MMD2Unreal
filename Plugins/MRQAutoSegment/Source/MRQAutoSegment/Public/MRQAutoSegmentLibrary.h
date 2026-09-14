@@ -82,6 +82,25 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MRQ Auto Segment")
 	static FString GetSegmentSequenceFolder();
 
+	/**
+	 * Locates ffmpeg the same way the merge step does. Empty or missing Configured falls through
+	 * to PATH and then to the locations the common Windows package managers install into.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
+	static FString ResolveFfmpegPath(const FString& Configured);
+
+	/**
+	 * Joins Files into OutputFile with ffmpeg's concat demuxer, stream copying so nothing is
+	 * re-encoded. All inputs must come from the same render settings, which per-segment renders
+	 * of one plan do.
+	 *
+	 * @return Empty on success, otherwise ffmpeg's own message. A returned string rather than a
+	 *         bool plus an out-param, because UE Python drops the bool of such a function and
+	 *         hands back only the out-param.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
+	static FString MergeVideos(const TArray<FString>& Files, const FString& OutputFile);
+
 	/** The Movie Render Queue the editor is currently showing. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
 	static UMoviePipelineQueue* GetEditorQueue();

@@ -70,6 +70,27 @@ FString UMRQAutoSegmentLibrary::GetSegmentSequenceFolder()
 	return FMRQAutoSegmentCore::GetSegmentSequenceFolder();
 }
 
+FString UMRQAutoSegmentLibrary::ResolveFfmpegPath(const FString& Configured)
+{
+	FString Reason;
+	const FString Path = FMRQAutoSegmentCore::ResolveFfmpegPath(Configured, Reason);
+	UE_LOG(LogTemp, Display, TEXT("[MRQAutoSegment] ffmpeg: %s (%s)"), *Path, *Reason);
+	return Path;
+}
+
+FString UMRQAutoSegmentLibrary::MergeVideos(const TArray<FString>& Files, const FString& OutputFile)
+{
+	FString Reason;
+	const FString Ffmpeg = FMRQAutoSegmentCore::ResolveFfmpegPath(FString(), Reason);
+
+	FString Error;
+	if (!FMRQAutoSegmentCore::MergeVideos(Ffmpeg, Files, OutputFile, Error))
+	{
+		return Error.IsEmpty() ? TEXT("ffmpeg 合并失败") : Error;
+	}
+	return FString();
+}
+
 UMoviePipelineQueue* UMRQAutoSegmentLibrary::GetEditorQueue()
 {
 	if (GEditor == nullptr)

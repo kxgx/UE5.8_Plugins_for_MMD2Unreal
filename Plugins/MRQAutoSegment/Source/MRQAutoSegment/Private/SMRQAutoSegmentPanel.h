@@ -10,7 +10,9 @@ class STextBlock;
 class SVerticalBox;
 class ULevelSequence;
 class UMovieSceneSequence;
+class UMRQSegmentRenderDriver;
 struct FAssetData;
+struct FMRQJobTemplate;
 template <typename OptionType> class SComboBox;
 
 /** One selectable Movie Graph output node class. Class == nullptr means "leave it to the graph". */
@@ -85,6 +87,20 @@ private:
 	/** Why the current bytes-per-pixel number is what it is. Shown next to the field. */
 	FString BytesPerPixelReason;
 
+	// ------------------------------------------------- "render each segment, then merge"
+
+	/** ffmpeg used to join the segments. Empty = look it up on PATH. */
+	FString FfmpegPath;
+
+	/** Remove the per-segment folders once the join succeeded. */
+	bool bDeleteSegmentsAfterMerge = false;
+
+	/** Skip the join and leave the per-segment files alone. */
+	bool bMergeAfterRender = true;
+
+	/** Drives the one-render-per-segment run. Held in the root set while it is working. */
+	TObjectPtr<UMRQSegmentRenderDriver> RenderDriver;
+
 	TSharedPtr<SVerticalBox> ConstraintBox;
 	TSharedPtr<SVerticalBox> SegmentBox;
 	TSharedPtr<STextBlock> SummaryBlock;
@@ -116,9 +132,19 @@ private:
 	FReply HandleProbeClicked();
 	FReply HandleGenerateClicked();
 	FReply HandleClearClicked();
+	FReply HandleRenderSegmentsClicked();
+	FReply HandleCancelRenderClicked();
+	FReply HandleBrowseFfmpegClicked();
 	FReply HandleRangeFromSequenceClicked();
 	FReply HandleSavePresetClicked();
 	FReply HandleLoadPresetClicked();
+
+	/** Builds the template the jobs and the per-segment run are configured from. */
+	void FillTemplate(FMRQJobTemplate& OutTemplate) const;
+
+	/** Renders each segment as its own MRQ run, then joins the results. */
+	void StartSegmentRender();
+	void SetStatus(const FString& InMessage);
 
 	// ---------------------------------------------------------------- helpers
 

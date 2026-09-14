@@ -5,7 +5,10 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMemory.h"
+#include "HAL/PlatformProcess.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
 #include "ObjectTools.h"
 #include "RHI.h"
 #include "RHIGlobals.h"
@@ -30,74 +33,74 @@ namespace
 {
 	/** A limit that does not restrict anything, for constraints that are reported only. */
 	constexpr int32 kNoLimit = MAX_int32;
+}
 
-	/**
-	 * Writes a copy of InSource whose playback range is exactly one segment.
-	 *
-	 * The copy is a real asset under MRQ_AUTOSEGMENT_SEGMENT_ROOT rather than a transient object,
-	 * because the render may run in a separate process ("Render (New Process)"), where a
-	 * transient object would not exist.
-	 *
-	 * @param InEndFrameInclusive  Last frame of the segment, inclusive. Stored half open.
-	 * @return The new sequence, or nullptr if the asset could not be written.
-	 */
-	ULevelSequence* MakeSegmentSequence(ULevelSequence* InSource, int32 InStartFrame, int32 InEndFrameInclusive, const FString& InLabel)
+/**
+ * Writes a copy of InSource whose playback range is exactly one segment.
+ *
+ * The copy is a real asset under MRQ_AUTOSEGMENT_SEGMENT_ROOT rather than a transient object,
+ * because the render may run in a separate process ("Render (New Process)"), where a
+ * transient object would not exist.
+ *
+ * @param InEndFrameInclusive  Last frame of the segment, inclusive. Stored half open.
+ * @return The new sequence, or nullptr if the asset could not be written.
+ */
+ULevelSequence* FMRQAutoSegmentCore::MakeSegmentSequence(ULevelSequence* InSource, int32 InStartFrame, int32 InEndFrameInclusive, const FString& InLabel)
+{
+	if (InSource == nullptr || InSource->GetMovieScene() == nullptr)
 	{
-		if (InSource == nullptr || InSource->GetMovieScene() == nullptr)
-		{
-			return nullptr;
-		}
-
-		const FString AssetName = FString::Printf(TEXT("%s_%s"), *InSource->GetName(), *InLabel);
-		const FString PackageName = FString::Printf(TEXT("%s/%s"), MRQ_AUTOSEGMENT_SEGMENT_ROOT, *AssetName);
-
-		UPackage* Package = CreatePackage(*PackageName);
-		if (Package == nullptr)
-		{
-			return nullptr;
-		}
-
-		// Re-generating the same queue must not trip over the previous run's assets.
-		if (ULevelSequence* Existing = FindObject<ULevelSequence>(Package, *AssetName))
-		{
-			Existing->ClearFlags(RF_Public | RF_Standalone);
-			Existing->Rename(nullptr, GetTransientPackage(), REN_DontCreateRedirectors | REN_NonTransactional);
-		}
-
-		ULevelSequence* Segment = DuplicateObject<ULevelSequence>(InSource, Package, FName(*AssetName));
-		if (Segment == nullptr || Segment->GetMovieScene() == nullptr)
-		{
-			return nullptr;
-		}
-
-		UMovieScene* Scene = Segment->GetMovieScene();
-
-		// The segment bounds are display-rate frames; the playback range is in tick resolution
-		// and is half open, so the inclusive end frame becomes End + 1.
-		const FFrameRate DisplayRate = Scene->GetDisplayRate();
-		const FFrameRate TickResolution = Scene->GetTickResolution();
-		const FFrameNumber StartTick =
-			FFrameRate::TransformTime(FFrameTime(FFrameNumber(InStartFrame)), DisplayRate, TickResolution).FloorToFrame();
-		const FFrameNumber EndTick =
-			FFrameRate::TransformTime(FFrameTime(FFrameNumber(InEndFrameInclusive + 1)), DisplayRate, TickResolution).CeilToFrame();
-
-		Scene->SetPlaybackRangeLocked(false);
-#if WITH_EDITOR
-		Scene->SetReadOnly(false);
-#endif
-		Scene->SetPlaybackRange(TRange<FFrameNumber>(StartTick, EndTick));
-
-		FAssetRegistryModule::AssetCreated(Segment);
-		Package->MarkPackageDirty();
-
-		const FString FileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
-		FSavePackageArgs SaveArgs;
-		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
-		SaveArgs.SaveFlags = SAVE_NoError;
-		UPackage::SavePackage(Package, Segment, *FileName, SaveArgs);
-
-		return Segment;
+		return nullptr;
 	}
+
+	const FString AssetName = FString::Printf(TEXT("%s_%s"), *InSource->GetName(), *InLabel);
+	const FString PackageName = FString::Printf(TEXT("%s/%s"), MRQ_AUTOSEGMENT_SEGMENT_ROOT, *AssetName);
+
+	UPackage* Package = CreatePackage(*PackageName);
+	if (Package == nullptr)
+	{
+		return nullptr;
+	}
+
+	// Re-generating the same queue must not trip over the previous run's assets.
+	if (ULevelSequence* Existing = FindObject<ULevelSequence>(Package, *AssetName))
+	{
+		Existing->ClearFlags(RF_Public | RF_Standalone);
+		Existing->Rename(nullptr, GetTransientPackage(), REN_DontCreateRedirectors | REN_NonTransactional);
+	}
+
+	ULevelSequence* Segment = DuplicateObject<ULevelSequence>(InSource, Package, FName(*AssetName));
+	if (Segment == nullptr || Segment->GetMovieScene() == nullptr)
+	{
+		return nullptr;
+	}
+
+	UMovieScene* Scene = Segment->GetMovieScene();
+
+	// The segment bounds are display-rate frames; the playback range is in tick resolution
+	// and is half open, so the inclusive end frame becomes End + 1.
+	const FFrameRate DisplayRate = Scene->GetDisplayRate();
+	const FFrameRate TickResolution = Scene->GetTickResolution();
+	const FFrameNumber StartTick =
+		FFrameRate::TransformTime(FFrameTime(FFrameNumber(InStartFrame)), DisplayRate, TickResolution).FloorToFrame();
+	const FFrameNumber EndTick =
+		FFrameRate::TransformTime(FFrameTime(FFrameNumber(InEndFrameInclusive + 1)), DisplayRate, TickResolution).CeilToFrame();
+
+	Scene->SetPlaybackRangeLocked(false);
+#if WITH_EDITOR
+	Scene->SetReadOnly(false);
+#endif
+	Scene->SetPlaybackRange(TRange<FFrameNumber>(StartTick, EndTick));
+
+	FAssetRegistryModule::AssetCreated(Segment);
+	Package->MarkPackageDirty();
+
+	const FString FileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+	SaveArgs.SaveFlags = SAVE_NoError;
+	UPackage::SavePackage(Package, Segment, *FileName, SaveArgs);
+
+	return Segment;
 }
 
 FString FMRQAutoSegmentCore::FormatBytes(int64 InBytes)
@@ -594,6 +597,182 @@ int32 FMRQAutoSegmentCore::DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, con
 FString FMRQAutoSegmentCore::GetSegmentSequenceFolder()
 {
 	return FString(MRQ_AUTOSEGMENT_SEGMENT_ROOT);
+}
+
+FString FMRQAutoSegmentCore::GetSegmentOutputFolder(const FString& InOutputDirectory, const FString& InLabel)
+{
+	return FPaths::Combine(InOutputDirectory, InLabel);
+}
+
+bool FMRQAutoSegmentCore::FindSegmentOutputFile(const FString& InFolder, const FString& InBaseName, const FString& InExtension, FString& OutFile)
+{
+	if (!IFileManager::Get().DirectoryExists(*InFolder))
+	{
+		return false;
+	}
+
+	TArray<FString> All;
+	IFileManager::Get().FindFiles(All, *(InFolder / TEXT("*")), /*Files=*/true, /*Directories=*/false);
+
+	FString Match;
+	int32 Matches = 0;
+	for (const FString& Name : All)
+	{
+		if (!InExtension.IsEmpty() && !Name.EndsWith(FString::Printf(TEXT(".%s"), *InExtension), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		// The concat list is written into the same folder when merging.
+		if (Name.EndsWith(TEXT(".txt"), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		// The range label sits in the middle of the resolved name ("<sequence>_0000-0354.mp4"),
+		// because the pattern's own tokens are resolved by MRQ before the file is written.
+		if (!InBaseName.IsEmpty() && !Name.Contains(InBaseName, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		Match = Name;
+		++Matches;
+	}
+
+	// Zero means the render produced nothing; more than one means a {frame_number} pattern left
+	// an image sequence behind, which cannot be joined as video.
+	if (Matches != 1)
+	{
+		return false;
+	}
+
+	OutFile = FPaths::Combine(InFolder, Match);
+	return true;
+}
+
+FString FMRQAutoSegmentCore::ResolveFfmpegPath(const FString& InConfigured, FString& OutReason)
+{
+	if (!InConfigured.IsEmpty())
+	{
+		if (FPaths::FileExists(InConfigured))
+		{
+			OutReason = TEXT("使用面板里指定的路径");
+			return InConfigured;
+		}
+		OutReason = FString::Printf(TEXT("面板路径不存在（%s），继续自动查找"), *InConfigured);
+	}
+
+	const FString PathVariable = FPlatformMisc::GetEnvironmentVariable(TEXT("PATH"));
+	TArray<FString> PathDirs;
+	PathVariable.ParseIntoArray(PathDirs, TEXT(";"), /*InCullEmpty=*/true);
+	for (const FString& Dir : PathDirs)
+	{
+		const FString Candidate = FPaths::Combine(Dir, TEXT("ffmpeg.exe"));
+		if (FPaths::FileExists(Candidate))
+		{
+			OutReason = TEXT("在 PATH 里找到");
+			return Candidate;
+		}
+	}
+
+	// The locations the usual Windows package managers install into, all derived from env vars
+	// so nothing here is tied to one machine.
+	struct FLayout { const TCHAR* EnvVar; const TCHAR* Relative; };
+	static const FLayout Layouts[] =
+	{
+		{ TEXT("USERPROFILE"),  TEXT("scoop/shims/ffmpeg.exe") },
+		{ TEXT("LOCALAPPDATA"), TEXT("Microsoft/WinGet/Links/ffmpeg.exe") },
+		{ TEXT("ProgramData"),  TEXT("chocolatey/bin/ffmpeg.exe") },
+		{ TEXT("SystemDrive"),  TEXT("ffmpeg/bin/ffmpeg.exe") },
+	};
+
+	for (const FLayout& Layout : Layouts)
+	{
+		const FString Root = FPlatformMisc::GetEnvironmentVariable(Layout.EnvVar);
+		if (Root.IsEmpty())
+		{
+			continue;
+		}
+
+		const FString Candidate = FPaths::Combine(Root, Layout.Relative);
+		if (FPaths::FileExists(Candidate))
+		{
+			OutReason = FString::Printf(TEXT("在 %%%s%% 下找到"), Layout.EnvVar);
+			return Candidate;
+		}
+	}
+
+	OutReason = TEXT("没找到，回退到 PATH 查找 'ffmpeg.exe'");
+	return TEXT("ffmpeg.exe");
+}
+
+bool FMRQAutoSegmentCore::MergeVideos(const FString& InFfmpegPath, const TArray<FString>& InFiles, const FString& InOutputFile, FString& OutError)
+{
+	if (InFiles.Num() == 0)
+	{
+		OutError = TEXT("没有可合并的分段文件");
+		return false;
+	}
+
+	if (InFiles.Num() == 1)
+	{
+		// Nothing to join; a copy would just double the disk cost.
+		if (IFileManager::Get().Copy(*InOutputFile, *InFiles[0], true, true) != COPY_OK)
+		{
+			OutError = FString::Printf(TEXT("无法写出 %s"), *InOutputFile);
+			return false;
+		}
+		return true;
+	}
+
+	// The concat demuxer wants forward slashes and single quotes escaped; absolute paths need
+	// -safe 0 on the command line.
+	FString ListContents;
+	for (const FString& File : InFiles)
+	{
+		FString Absolute = FPaths::ConvertRelativePathToFull(File).Replace(TEXT("\\"), TEXT("/"));
+		Absolute.ReplaceInline(TEXT("'"), TEXT("'\\''"));
+		ListContents += FString::Printf(TEXT("file '%s'\n"), *Absolute);
+	}
+
+	const FString ListFile = FPaths::Combine(FPaths::GetPath(InOutputFile), TEXT("MRQAutoSegment_concat.txt"));
+	if (!FFileHelper::SaveStringToFile(ListContents, *ListFile))
+	{
+		OutError = FString::Printf(TEXT("无法写出合并列表 %s"), *ListFile);
+		return false;
+	}
+
+	const FString Arguments = FString::Printf(
+		TEXT("-y -hide_banner -loglevel error -f concat -safe 0 -i \"%s\" -c copy \"%s\""),
+		*ListFile, *InOutputFile);
+
+	int32 ReturnCode = -1;
+	FString StdOut;
+	FString StdErr;
+	const bool bLaunched = FPlatformProcess::ExecProcess(*InFfmpegPath, *Arguments, &ReturnCode, &StdOut, &StdErr);
+
+	IFileManager::Get().Delete(*ListFile, false, true, true);
+
+	if (!bLaunched)
+	{
+		OutError = FString::Printf(TEXT("无法启动 %s"), *InFfmpegPath);
+		return false;
+	}
+
+	if (ReturnCode != 0)
+	{
+		OutError = StdErr.IsEmpty() ? FString::Printf(TEXT("ffmpeg 返回 %d"), ReturnCode) : StdErr.TrimStartAndEnd();
+		return false;
+	}
+
+	if (!FPaths::FileExists(InOutputFile))
+	{
+		OutError = FString::Printf(TEXT("ffmpeg 成功返回但没写出 %s"), *InOutputFile);
+		return false;
+	}
+
+	return true;
 }
 
 int32 FMRQAutoSegmentCore::DeleteGeneratedSequences()

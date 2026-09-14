@@ -44,6 +44,8 @@ public class MRQAutoSegment : ModuleRules
 			"WorkspaceMenuStructure",
 			// ISequencer + USequencerToolMenuContext, for the Sequencer toolbar button
 			"Sequencer",
+			// FDesktopPlatformModule::OpenFileDialog, for the ffmpeg browse button
+			"DesktopPlatform",
 		});
 	}
 }

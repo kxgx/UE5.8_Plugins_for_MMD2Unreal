@@ -112,6 +112,19 @@ public:
 	static int32 DeleteGeneratedJobs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
 
 	/**
+	 * Writes - or refreshes - the copy of InSource whose playback range is exactly one segment,
+	 * and returns it.
+	 *
+	 * The copy is a real asset rather than a transient object, because a render started with
+	 * "Render (New Process)" happens in a different process where a transient object would not
+	 * exist.
+	 *
+	 * @param InEndFrameInclusive  Last frame of the segment, inclusive; stored half open.
+	 * @return The new sequence, or nullptr if the asset could not be written.
+	 */
+	static ULevelSequence* MakeSegmentSequence(ULevelSequence* InSource, int32 InStartFrame, int32 InEndFrameInclusive, const FString& InLabel);
+
+	/**
 	 * Diagnostic. For every generated job, rebuilds the graph the engine builds at render time and
 	 * reports the frame range it carries, so "the plugin wrote the wrong numbers" can be told
 	 * apart from "the engine ignored the numbers".
@@ -125,6 +138,37 @@ public:
 
 	/** Content folder holding the per-segment sequence copies, for display. */
 	static FString GetSegmentSequenceFolder();
+
+	/**
+	 * Per-segment output folder: "<OutputDirectory>/<label>".
+	 *
+	 * Each segment writing into its own folder is what keeps a resumed or partially failed run
+	 * from mixing segments up, and it is what the merge step reads back in label order.
+	 */
+	static FString GetSegmentOutputFolder(const FString& InOutputDirectory, const FString& InLabel);
+
+	/**
+	 * Finds the single file a segment produced inside its own folder.
+	 *
+	 * @param InBaseName   Substring the file name must contain; the range label works well.
+	 * @param InExtension  Expected extension without the dot, e.g. "mp4". Empty accepts any.
+	 * @return True when exactly one candidate was found.
+	 */
+	static bool FindSegmentOutputFile(const FString& InFolder, const FString& InBaseName, const FString& InExtension, FString& OutFile);
+
+	/**
+	 * Locates ffmpeg. Empty or missing InConfigured falls through to PATH and then to the
+	 * locations the common Windows package managers install into. OutReason describes the choice.
+	 */
+	static FString ResolveFfmpegPath(const FString& InConfigured, FString& OutReason);
+
+	/**
+	 * Joins InFiles into InOutputFile with ffmpeg's concat demuxer, stream copying so nothing is
+	 * re-encoded. All inputs must come from the same render settings, which they do here.
+	 *
+	 * @return True on a zero exit code; otherwise OutError carries ffmpeg's own message.
+	 */
+	static bool MergeVideos(const FString& InFfmpegPath, const TArray<FString>& InFiles, const FString& InOutputFile, FString& OutError);
 
 	/** "12.3 GiB" style formatting. */
 	static FString FormatBytes(int64 InBytes);

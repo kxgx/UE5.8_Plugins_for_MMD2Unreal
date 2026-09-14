@@ -268,3 +268,35 @@ struct FMRQSegmentPreset
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset", meta = (ClampMin = 1))
 	int32 TemporalSampleCount = 8;
 };
+
+/**
+ * Settings for the "render each segment on its own, then merge" mode.
+ *
+ * Every segment becomes a separate Movie Render Queue run with exactly one job, which is what
+ * makes the frame ranges reliable: there is no second job around to have its range applied over
+ * the top of this one.
+ */
+USTRUCT(BlueprintType)
+struct FMRQSegmentRenderRequest
+{
+	GENERATED_BODY()
+
+	/**
+	 * ffmpeg executable used to join the segments. Empty means "look it up on PATH", then fall
+	 * back to the locations the usual package managers install into.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Merge", meta = (FilePathFilter = "exe"))
+	FString FfmpegPath;
+
+	/** Name of the joined file, written next to the per-segment folders. Empty = "<sequence>_full". */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Merge")
+	FString MergedFileName;
+
+	/** Remove the per-segment folders once the join succeeded. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Merge")
+	bool bDeleteSegmentsAfterMerge = false;
+
+	/** Skip the join and just leave the per-segment files in place. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Merge")
+	bool bMergeAfterRender = true;
+};
