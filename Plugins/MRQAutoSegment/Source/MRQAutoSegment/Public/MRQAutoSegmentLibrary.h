@@ -80,6 +80,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
 	static int32 DumpGeneratedGraphs(UMoviePipelineQueue* Queue, const FString& JobNamePrefix);
 
+	/** Deletes the per-segment sequences GenerateJobs wrote. @return Number deleted. */
+	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
+	static int32 DeleteGeneratedSequences();
+
+	/** Content folder holding the per-segment sequences. */
+	UFUNCTION(BlueprintPure, Category = "MRQ Auto Segment")
+	static FString GetSegmentSequenceFolder();
+
 	/** The Movie Render Queue the editor is currently showing. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
 	static UMoviePipelineQueue* GetEditorQueue();

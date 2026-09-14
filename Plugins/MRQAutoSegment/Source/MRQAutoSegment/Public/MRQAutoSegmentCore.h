@@ -58,7 +58,23 @@ struct FMRQJobTemplate
 
 	/** Digits used to zero pad the frame numbers inside the range label. */
 	int32 PadDigits = 4;
+
+	/**
+	 * Write a level sequence per segment, carrying that segment's frame range, and point the job
+	 * at it.
+	 *
+	 * This is the "generate a sequence for the specified frame range" mode. The copies are real
+	 * assets under MRQ_AUTOSEGMENT_SEGMENT_ROOT; each one gets both its playback range and its
+	 * working range set, and is saved to disk, so the range is part of the asset rather than
+	 * something a later step has to apply.
+	 *
+	 * Off means every job points at the sequence you picked and the range only lives on the job.
+	 */
+	bool bSequencePerSegment = true;
 };
+
+/** Content folder the per-segment sequences are written into. */
+#define MRQ_AUTOSEGMENT_SEGMENT_ROOT TEXT("/Game/MRQAutoSegment/Segments")
 
 /**
  * Hardware probing, segment planning and queue generation.
@@ -100,10 +116,9 @@ public:
 	/**
 	 * Writes one job per segment into InQueue.
 	 *
-	 * Every job points at InSequence itself and carries its own frame range on its Basic config;
-	 * the plugin writes no sequence assets of its own. Basic mode builds its UMovieGraphConfig
-	 * just-in-time at render time, which is what lets the file name, the output folder and the
-	 * playback range be set per job without touching the user's graph.
+	 * Every job carries its own frame range, file name and output folder on its Basic config.
+	 * With bSequencePerSegment set, each job also points at its own level sequence whose range is
+	 * already baked in.
 	 *
 	 * @return Number of jobs actually created.
 	 */
@@ -111,6 +126,23 @@ public:
 
 	/** Removes jobs this plugin previously generated, identified by their JobName prefix. */
 	static int32 DeleteGeneratedJobs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
+
+	/**
+	 * Writes, or refreshes, the level sequence for one segment and returns it.
+	 *
+	 * Sets the playback range and the working range from InStartFrame / InEndFrameInclusive and
+	 * saves the asset, so the range survives a reload and a render in a separate process.
+	 *
+	 * @param InEndFrameInclusive  Last frame of the segment, inclusive. Stored half open.
+	 * @return The new sequence, or nullptr if the asset could not be written.
+	 */
+	static ULevelSequence* MakeSegmentSequence(ULevelSequence* InSource, int32 InStartFrame, int32 InEndFrameInclusive, const FString& InLabel);
+
+	/** Deletes the per-segment sequences written by GenerateJobs. @return Number deleted. */
+	static int32 DeleteGeneratedSequences();
+
+	/** Content folder holding the per-segment sequences. */
+	static FString GetSegmentSequenceFolder();
 
 	/**
 	 * Diagnostic. For every generated job, rebuilds the graph the engine builds at render time and

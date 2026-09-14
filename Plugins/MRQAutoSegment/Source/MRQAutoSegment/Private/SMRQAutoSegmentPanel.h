@@ -92,6 +92,12 @@ private:
 	/** Why the current bytes-per-pixel number is what it is. Shown next to the field. */
 	FString BytesPerPixelReason;
 
+	/**
+	 * Write a level sequence per segment, carrying that segment's frame range, and point the job
+	 * at it. See FMRQJobTemplate::bSequencePerSegment.
+	 */
+	bool bSequencePerSegment = true;
+
 	TSharedPtr<SVerticalBox> ConstraintBox;
 	TSharedPtr<SVerticalBox> SegmentBox;
 	TSharedPtr<STextBlock> SummaryBlock;
