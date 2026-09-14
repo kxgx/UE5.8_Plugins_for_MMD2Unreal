@@ -121,14 +121,6 @@ public:
 	 */
 	static int32 DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
 
-	/**
-	 * Per-segment output folder: "<OutputDirectory>/<label>".
-	 *
-	 * Each segment writing into its own folder keeps the pieces from overwriting or mixing, and
-	 * makes it obvious which file belongs to which range.
-	 */
-	static FString GetSegmentOutputFolder(const FString& InOutputDirectory, const FString& InLabel);
-
 	/** "12.3 GiB" style formatting. */
 	static FString FormatBytes(int64 InBytes);
 };

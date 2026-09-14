@@ -368,11 +368,12 @@ int32 FMRQAutoSegmentCore::GenerateJobs(UMoviePipelineQueue* InQueue, ULevelSequ
 			continue;
 		}
 
-		// One folder per segment: <output directory>/<frame range>/
+		// Every segment writes into the output directory itself. The file name carries the range,
+		// so the pieces stay distinguishable without spreading them over one folder per segment.
 		if (!InTemplate.OutputDirectory.IsEmpty())
 		{
 			Basic->bOverride_OutputDirectory = true;
-			Basic->OutputDirectory.Path = GetSegmentOutputFolder(InTemplate.OutputDirectory, Entry.Label);
+			Basic->OutputDirectory.Path = InTemplate.OutputDirectory;
 		}
 
 		Basic->bOverride_FileNameFormat = true;
@@ -536,9 +537,4 @@ int32 FMRQAutoSegmentCore::DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, con
 
 	UE_LOG(LogMRQAutoSegment, Display, TEXT("[dump] inspected %d job(s)"), Inspected);
 	return Inspected;
-}
-
-FString FMRQAutoSegmentCore::GetSegmentOutputFolder(const FString& InOutputDirectory, const FString& InLabel)
-{
-	return FPaths::Combine(InOutputDirectory, InLabel);
 }
