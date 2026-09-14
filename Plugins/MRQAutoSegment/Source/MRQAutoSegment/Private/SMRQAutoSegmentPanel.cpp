@@ -721,42 +721,6 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildPlanSection()
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 6.0f, 0.0f, 0.0f)
-		// --- per-segment sequence ------------------------------------------------
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot().AutoWidth()
-			[
-				SNew(SCheckBox)
-				.IsChecked_Lambda([this]() { return bSequencePerSegment ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](ECheckBoxState InState) { bSequencePerSegment = (InState == ECheckBoxState::Checked); })
-				[
-					SNew(STextBlock).Text(LOCTEXT("SequencePerSegment", "每段生成一个关卡序列（带指定帧范围）"))
-				]
-			]
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			SNew(STextBlock)
-			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-			.AutoWrapText(true)
-			.Text_Lambda([this]()
-			{
-				return FText::FromString(FString::Printf(
-					TEXT("每段的序列写在 %s/<序列名>_<帧范围>，帧范围同时写进播放范围和工作范围并保存。")
-					TEXT("取消勾选则所有任务共用你选的那个序列。"),
-					*UMRQAutoSegmentLibrary::GetSegmentSequenceFolder()));
-			})
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 6.0f, 0.0f, 0.0f)
 		[
 			SNew(SHorizontalBox)
 
@@ -779,7 +743,7 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildPlanSection()
 			[
 				SNew(SButton)
 				.Text(LOCTEXT("Clear", "清除生成的任务"))
-				.ToolTipText(LOCTEXT("ClearTip", "删除本插件生成的任务（按任务名前缀匹配）及其分段序列"))
+				.ToolTipText(LOCTEXT("ClearTip", "删除本插件生成的任务（按任务名前缀匹配）"))
 				.OnClicked(this, &SMRQAutoSegmentPanel::HandleClearClicked)
 			]
 		]
@@ -808,8 +772,6 @@ void SMRQAutoSegmentPanel::FillTemplate(FMRQJobTemplate& OutTemplate) const
 
 	// The temporal sample count only exists on the generated jobs; it never influences segmentation.
 	OutTemplate.TemporalSampleCount = TemporalSampleCount;
-
-	OutTemplate.bSequencePerSegment = bSequencePerSegment;
 
 	// Only pin an output type when a concrete one was picked; otherwise the generated graph decides.
 	if (SelectedOutputType.IsValid() && SelectedOutputType->Class != nullptr)
@@ -1474,14 +1436,9 @@ FReply SMRQAutoSegmentPanel::HandleClearClicked()
 	const int32 Removed = UMRQAutoSegmentLibrary::DeleteGeneratedJobs(
 		Queue, UMRQAutoSegmentLibrary::GetDefaultJobNamePrefix());
 
-	// The per-segment sequences exist only to carry each segment's frame range, so they go with
-	// the jobs that pointed at them.
-	const int32 RemovedSequences = UMRQAutoSegmentLibrary::DeleteGeneratedSequences();
-
 	if (StatusBlock.IsValid())
 	{
-		StatusBlock->SetText(FText::FromString(FString::Printf(
-			TEXT("已清除 %d 个由本插件生成的任务，以及 %d 个分段序列。"), Removed, RemovedSequences)));
+		StatusBlock->SetText(FText::FromString(FString::Printf(TEXT("已清除 %d 个由本插件生成的任务。"), Removed)));
 	}
 	return FReply::Handled();
 }
