@@ -96,10 +96,10 @@ Rename-Item "Plugins\MMD2Unreal\Source.disabled" "Source"
 > 本工程里 `Tools\build_env.ps1` 已经把上面 1、2、4 步和工程骨架都包好了，
 > 用 `-Mode enable` / `-Mode disable` 一条命令完成。
 
-第 2 步的"工程 C++ 骨架"指：
+第 2 步的"工程 C++ 骨架"指（把 `<工程名>` 换成你自己的工程名）：
 
-- `MMD_test.uproject` 里加回 `"Modules"` 段（`MMD_test`，Runtime/Default）
-- 建 `Source/MMD_test.Target.cs`、`Source/MMD_testEditor.Target.cs`、`Source/MMD_test/`（空模块）
+- `<工程名>.uproject` 里加回 `"Modules"` 段（`<工程名>`，Runtime/Default）
+- 建 `Source/<工程名>.Target.cs`、`Source/<工程名>Editor.Target.cs`、`Source/<工程名>/`（空模块）
 
 编译完再从 `.uproject` 移除 `Modules` 并删掉 `Source/`，工程就回到纯蓝图状态。
 （这套骨架本次已经验证可用，需要时可以让我重新生成。）

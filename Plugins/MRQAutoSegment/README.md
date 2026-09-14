@@ -232,7 +232,7 @@ queue = lib.get_editor_queue()
 seq = unreal.load_asset("/Game/NewLevelSequence")
 created = lib.generate_jobs(
     queue, seq, "/Game/Main",
-    plan, "D:/Renders", "{sequence_name}", unreal.IntPoint(3840, 2160))
+    plan, "{project_dir}/Saved/MovieRenders", "{sequence_name}", unreal.IntPoint(3840, 2160))
 unreal.log("created %d jobs" % created)
 ```
 

@@ -196,7 +196,7 @@ req.set_editor_property("ram_use_limit", 0.8)   # 空闲内存的 80%
 req.set_editor_property("vram_use_limit", 0.8)  # 空闲显存的 80%
 plan = lib.plan_from_hardware(req)
 lib.generate_jobs(lib.get_editor_queue(), unreal.load_asset("/Game/MySequence"),
-                  "/Game/Main", plan, "D:/Renders", "{sequence_name}",
+                  "/Game/Main", plan, "{project_dir}/Saved/MovieRenders", "{sequence_name}",
                   unreal.IntPoint(3840, 2160))
 ```
 

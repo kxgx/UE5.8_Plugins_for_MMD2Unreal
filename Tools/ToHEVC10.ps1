@@ -7,8 +7,8 @@
 #       HEVC file with a sane bitrate.
 #
 #  Usage:
-#     .\ToHEVC10.ps1 -Source "D:\render\shot.mov"
-#     .\ToHEVC10.ps1 -Source "D:\render\shot.mov" -Cq 16 -Encoder x265
+#     .\ToHEVC10.ps1 -Source "<你的视频.mov>"
+#     .\ToHEVC10.ps1 -Source "<你的视频.mov>" -Cq 16 -Encoder x265
 #     .\ToHEVC10.ps1 -Source "frames\shot_%04d.exr" -Fps 60
 #
 #  Parameters:
@@ -40,7 +40,7 @@ if (-not $ffmpeg) {
         "$env:USERPROFILE\scoop\shims\ffmpeg.exe"
         "$env:LOCALAPPDATA\Microsoft\WinGet\Links\ffmpeg.exe"
         "$env:ProgramData\chocolatey\bin\ffmpeg.exe"
-        'C:\ffmpeg\bin\ffmpeg.exe'
+        "$env:SystemDrive\ffmpeg\bin\ffmpeg.exe"
     )
     $ffmpeg = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 }
