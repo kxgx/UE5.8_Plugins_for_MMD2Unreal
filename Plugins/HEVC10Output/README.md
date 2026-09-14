@@ -75,20 +75,26 @@ ffmpeg -i "NewLevelSequence.beauty.mp4" -i "NewLevelSequence.wav" `
 ### 如果要改插件代码并重编
 
 ```powershell
+# 以下命令都从工程根目录执行
+cd <你的工程目录>
+
 # 1. 停用 MMD2Unreal 的 Source，避免被编成空壳
-Rename-Item "C:\UE5\MMD_test\Plugins\MMD2Unreal\Source" "Source.disabled"
+Rename-Item "Plugins\MMD2Unreal\Source" "Source.disabled"
 
 # 2. 恢复工程 C++ 骨架（见下）和插件源码
-Rename-Item "C:\UE5\MMD_test\Plugins\HEVC10Output\Source.disabled" "Source"
+Rename-Item "Plugins\HEVC10Output\Source.disabled" "Source"
 
-# 3. 编译
-& "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" `
-    MMD_testEditor Win64 Development -Project="C:\UE5\MMD_test\MMD_test.uproject" -WaitMutex
+# 3. 编译（<UE> 指你的 UE 5.8 安装目录）
+& "<UE>\Engine\Build\BatchFiles\Build.bat" `
+    YourProjectEditor Win64 Development -Project="<你的工程>\YourProject.uproject" -WaitMutex
 
 # 4. 还原：插件源码改名回去、恢复 MMD2Unreal 的 Source
-Rename-Item "C:\UE5\MMD_test\Plugins\HEVC10Output\Source" "Source.disabled"
-Rename-Item "C:\UE5\MMD_test\Plugins\MMD2Unreal\Source.disabled" "Source"
+Rename-Item "Plugins\HEVC10Output\Source" "Source.disabled"
+Rename-Item "Plugins\MMD2Unreal\Source.disabled" "Source"
 ```
+
+> 本工程里 `Tools\build_env.ps1` 已经把上面 1、2、4 步和工程骨架都包好了，
+> 用 `-Mode enable` / `-Mode disable` 一条命令完成。
 
 第 2 步的"工程 C++ 骨架"指：
 

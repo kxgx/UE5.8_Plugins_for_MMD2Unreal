@@ -115,12 +115,14 @@ Plugins/MMDSequencerPreview/
 工程里已经放好了 `Tools/build_env.ps1`，一条命令完成准备工作：
 
 ```powershell
+# 从工程根目录执行（<UE> 指你的 UE 5.8 安装目录）
+
 # 准备构建环境（会自动停用 MMD2Unreal 的 Source、恢复插件源码、加临时工程模块）
 powershell -ExecutionPolicy Bypass -File Tools\build_env.ps1 -Mode enable
 
 # 编译
-& "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" `
-    MMD_testEditor Win64 Development -Project="C:\UE5\MMD_test\MMD_test.uproject" -WaitMutex
+& "<UE>\Engine\Build\BatchFiles\Build.bat" `
+    YourProjectEditor Win64 Development -Project="<你的工程>\YourProject.uproject" -WaitMutex
 
 # 还原（务必执行，否则工程处于 C++ 状态且 MMD2Unreal 被禁用）
 powershell -ExecutionPolicy Bypass -File Tools\build_env.ps1 -Mode disable

@@ -39,9 +39,10 @@ YourProject/
 **首次打开编辑器时会提示重新编译模块**，点「是」即可。或者手动编译：
 
 ```bash
-"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" ^
+# <UE> = 你的 UE 5.8 安装目录
+"<UE>\Engine\Build\BatchFiles\Build.bat" ^
     YourProjectEditor Win64 Development ^
-    -Project="C:\Path\To\YourProject.uproject" -WaitMutex
+    -Project="<你的工程>\YourProject.uproject" -WaitMutex
 ```
 
 > 如果你只想用其中一个，单独拷对应目录即可，三个插件互不依赖。
