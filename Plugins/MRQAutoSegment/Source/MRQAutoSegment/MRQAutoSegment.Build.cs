@@ -17,6 +17,8 @@ public class MRQAutoSegment : ModuleRules
 			"MovieRenderPipelineEditor",
 			// ULevelSequence
 			"LevelSequence",
+			// UMovieScene::GetPlaybackRange and the Discrete*Lower/Upper helpers in MovieSceneTimeHelpers.h
+			"MovieScene",
 			// RHIGetTextureMemoryStats, FTextureMemoryStats
 			"RHI",
 			// FSlateIcon on the toolbar entry

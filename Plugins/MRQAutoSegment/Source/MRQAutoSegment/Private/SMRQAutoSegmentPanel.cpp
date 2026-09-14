@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "LevelSequence.h"
 #include "MovieScene.h"
+#include "MovieSceneTimeHelpers.h"
 #include "MoviePipelineQueue.h"
 #include "Graph/Nodes/MovieGraphFileOutputNode.h"
 #include "Graph/MovieGraphProjectSettings.h"
@@ -965,11 +966,18 @@ void SMRQAutoSegmentPanel::ApplyRangeFromSequence(ULevelSequence* InSequence)
 	const UMovieScene* MovieScene = InSequence->GetMovieScene();
 	const TRange<FFrameNumber> PlaybackRange = MovieScene->GetPlaybackRange();
 
+	// The stored range is half-open [Start, End), while this panel's range is inclusive. Use the
+	// engine's own discrete helpers - the same ones UMovieSceneSequenceExtensions uses to answer
+	// GetPlaybackStart/GetPlaybackEnd - so the numbers here match what Sequencer displays.
+	// Reading the raw upper bound would land one frame past the last frame that is actually played.
+	const FFrameNumber FirstTick = UE::MovieScene::DiscreteInclusiveLower(PlaybackRange);
+	const FFrameNumber LastTick = UE::MovieScene::DiscreteExclusiveUpper(PlaybackRange);
+
 	Request.RangeStart = FFrameRate::TransformTime(
-		FFrameTime(PlaybackRange.GetLowerBoundValue()), MovieScene->GetTickResolution(), MovieScene->GetDisplayRate())
+		FFrameTime(FirstTick), MovieScene->GetTickResolution(), MovieScene->GetDisplayRate())
 		.FloorToFrame().Value;
 	Request.RangeEnd = FFrameRate::TransformTime(
-		FFrameTime(PlaybackRange.GetUpperBoundValue()), MovieScene->GetTickResolution(), MovieScene->GetDisplayRate())
+		FFrameTime(LastTick), MovieScene->GetTickResolution(), MovieScene->GetDisplayRate())
 		.FloorToFrame().Value;
 }
 
