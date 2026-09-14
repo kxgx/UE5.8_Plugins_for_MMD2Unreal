@@ -3,15 +3,12 @@
 #include "SMRQAutoSegmentPanel.h"
 
 #include "MRQAutoSegmentCore.h"
-#include "MRQAutoSegmentDriver.h"
 #include "MRQAutoSegmentLibrary.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
-#include "DesktopPlatformModule.h"
 #include "Editor.h"
 #include "Engine/World.h"
-#include "Framework/Application/SlateApplication.h"
 #include "LevelSequence.h"
 #include "MovieScene.h"
 #include "MovieSceneTimeHelpers.h"
@@ -777,102 +774,6 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildPlanSection()
 			SAssignNew(StatusBlock, STextBlock)
 			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 			.AutoWrapText(true)
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 10.0f, 0.0f, 0.0f)
-		[
-			MakeHeader(LOCTEXT("SegmentRenderHeader", "逐段渲染并合并"))
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 2.0f, 0.0f, 0.0f)
-		[
-			SNew(STextBlock)
-			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-			.AutoWrapText(true)
-			.Text(LOCTEXT("SegmentRenderBlurb",
-				"每段单独跑一次 MRQ（一次只有一个任务，帧范围不会被别的任务覆盖），"
-				"各段输出到自己的子文件夹，全部完成后再用 ffmpeg 无损拼接成一个文件。"
-				"不改动「影片渲染队列」里你自己的任务。"))
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-		[
-			MakeRow(LOCTEXT("FfmpegPathLabel", "ffmpeg 路径"),
-				SNew(SHorizontalBox)
-
-				+ SHorizontalBox::Slot().FillWidth(1.0f)
-				[
-					SNew(SEditableTextBox)
-					.Text_Lambda([this]() { return FText::FromString(FfmpegPath); })
-					.HintText(LOCTEXT("FfmpegHint", "留空 = 从 PATH 自动查找"))
-					.OnTextCommitted_Lambda([this](const FText& InText, ETextCommit::Type) { FfmpegPath = InText.ToString(); })
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
-				[
-					SNew(SButton)
-					.Text(LOCTEXT("Browse", "浏览…"))
-					.OnClicked(this, &SMRQAutoSegmentPanel::HandleBrowseFfmpegClicked)
-				]
-			)
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 2.0f, 0.0f, 0.0f)
-		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 12.0f, 0.0f)
-			[
-				SNew(SCheckBox)
-				.IsChecked_Lambda([this]() { return bMergeAfterRender ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](ECheckBoxState InState) { bMergeAfterRender = (InState == ECheckBoxState::Checked); })
-				[
-					SNew(STextBlock).Text(LOCTEXT("MergeAfter", "全部完成后合并成一个文件"))
-				]
-			]
-
-			+ SHorizontalBox::Slot().AutoWidth()
-			[
-				SNew(SCheckBox)
-				.IsChecked_Lambda([this]() { return bDeleteSegmentsAfterMerge ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged_Lambda([this](ECheckBoxState InState) { bDeleteSegmentsAfterMerge = (InState == ECheckBoxState::Checked); })
-				[
-					SNew(STextBlock).Text(LOCTEXT("DeleteSegments", "合并成功后删除分段文件夹"))
-				]
-			]
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 6.0f, 0.0f)
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("RenderSegments", "逐段渲染并合并"))
-				.ToolTipText(LOCTEXT("RenderSegmentsTip",
-					"每段单独渲染一次，各段一个文件夹，全部完成后用 ffmpeg 拼接"))
-				.IsEnabled_Lambda([this]() { return !RenderDriver || !RenderDriver->IsRunning(); })
-				.OnClicked(this, &SMRQAutoSegmentPanel::HandleRenderSegmentsClicked)
-			]
-
-			+ SHorizontalBox::Slot().AutoWidth()
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("CancelRender", "取消"))
-				.IsEnabled_Lambda([this]() { return RenderDriver && RenderDriver->IsRunning(); })
-				.OnClicked(this, &SMRQAutoSegmentPanel::HandleCancelRenderClicked)
-			]
 		];
 }
 
@@ -901,111 +802,6 @@ void SMRQAutoSegmentPanel::SetStatus(const FString& InMessage)
 	{
 		StatusBlock->SetText(FText::FromString(InMessage));
 	}
-}
-
-FReply SMRQAutoSegmentPanel::HandleBrowseFfmpegClicked()
-{
-	IDesktopPlatform* Desktop = FDesktopPlatformModule::Get();
-	if (Desktop == nullptr)
-	{
-		return FReply::Handled();
-	}
-
-	const void* ParentWindow = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
-
-	TArray<FString> Chosen;
-	const bool bPicked = Desktop->OpenFileDialog(
-		ParentWindow,
-		TEXT("选择 ffmpeg 可执行文件"),
-		FPaths::GetPath(FfmpegPath),
-		TEXT(""),
-		TEXT("可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*"),
-		EFileDialogFlags::None,
-		Chosen);
-
-	if (bPicked && Chosen.Num() > 0)
-	{
-		FfmpegPath = Chosen[0];
-	}
-	return FReply::Handled();
-}
-
-void SMRQAutoSegmentPanel::StartSegmentRender()
-{
-	ULevelSequence* Sequence = SelectedSequence.IsValid()
-		? Cast<ULevelSequence>(SelectedSequence->GetAsset())
-		: nullptr;
-
-	if (Sequence == nullptr)
-	{
-		SetStatus(TEXT("请先选择一个关卡序列。"));
-		return;
-	}
-
-	if (!Plan.bValid || Plan.Segments.Num() == 0)
-	{
-		SetStatus(Plan.Message.IsEmpty() ? TEXT("没有可渲染的分段。") : Plan.Message);
-		return;
-	}
-
-	FMRQJobTemplate Template;
-	FillTemplate(Template);
-
-	FMRQSegmentRenderRequest Render;
-	Render.FfmpegPath = FfmpegPath;
-	Render.bMergeAfterRender = bMergeAfterRender;
-	Render.bDeleteSegmentsAfterMerge = bDeleteSegmentsAfterMerge;
-
-	// Nothing else references the driver while it works, and the panel is not a UObject, so it
-	// goes into the root set for the duration and is released when the run reports back.
-	if (RenderDriver != nullptr)
-	{
-		RenderDriver->RemoveFromRoot();
-	}
-
-	RenderDriver = NewObject<UMRQSegmentRenderDriver>(GetTransientPackage());
-	RenderDriver->AddToRoot();
-
-	// The panel can be closed mid-render, so the callbacks must not hold a raw this.
-	TWeakPtr<SMRQAutoSegmentPanel> WeakSelf = SharedThis(this);
-
-	RenderDriver->OnStatus.BindLambda([WeakSelf](const FString& InMessage)
-	{
-		if (TSharedPtr<SMRQAutoSegmentPanel> Self = WeakSelf.Pin())
-		{
-			Self->SetStatus(InMessage);
-		}
-	});
-
-	RenderDriver->OnCompleted.BindLambda([WeakSelf](bool bSuccess, const FString& InMessage)
-	{
-		if (TSharedPtr<SMRQAutoSegmentPanel> Self = WeakSelf.Pin())
-		{
-			Self->SetStatus(InMessage);
-			if (Self->RenderDriver != nullptr)
-			{
-				Self->RenderDriver->RemoveFromRoot();
-			}
-		}
-	});
-
-	RenderDriver->Begin(Sequence, GetCurrentMapPath(), Plan, Template, Render);
-}
-
-FReply SMRQAutoSegmentPanel::HandleRenderSegmentsClicked()
-{
-	StartSegmentRender();
-	return FReply::Handled();
-}
-
-FReply SMRQAutoSegmentPanel::HandleCancelRenderClicked()
-{
-	if (RenderDriver != nullptr && RenderDriver->IsRunning())
-	{
-		RenderDriver->RequestCancel();
-		SetStatus(TEXT("已请求取消，当前这一段渲染完后停止。"));
-	}
-	return FReply::Handled();
 }
 
 FText SMRQAutoSegmentPanel::GetModeLabel(EMRQSegmentMode Mode) const
