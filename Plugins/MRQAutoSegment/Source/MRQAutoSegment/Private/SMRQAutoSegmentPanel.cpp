@@ -399,60 +399,21 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 				])
 		]
 
-		// --- sample counts ------------------------------------------------------
-		// These do not feed the planner, so changing them deliberately does not recompute the
-		// segmentation - they only land on the jobs that get generated.
+		// --- temporal samples ---------------------------------------------------
+		// Does not feed the planner, so editing it deliberately leaves the segmentation alone -
+		// it only lands on the jobs that get generated.
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
-			MakeRow(LOCTEXT("LabelSamples", "采样数"),
+			MakeRow(LOCTEXT("LabelSamples", "时间采样"),
 				SNew(SHorizontalBox)
 
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SCheckBox)
-					.IsChecked_Lambda([this]()
-					{
-						return bOverrideSampleCounts ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-					})
-					.OnCheckStateChanged_Lambda([this](ECheckBoxState NewState)
-					{
-						bOverrideSampleCounts = (NewState == ECheckBoxState::Checked);
-					})
-					[
-						SNew(STextBlock).Text(LOCTEXT("OverrideSamples", "写入任务"))
-					]
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 4.0f, 0.0f)
-				[
-					SNew(STextBlock).Text(LOCTEXT("LabelSpatialSamples", "空间"))
-				]
-
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
 					SNew(SNumericEntryBox<int32>)
 					.AllowSpin(false)
 					.MinValue(1)
 					.MaxValue(64)
-					.IsEnabled_Lambda([this]() { return bOverrideSampleCounts; })
-					.MinDesiredValueWidth(48.0f)
-					.Value_Lambda([this]() { return TOptional<int32>(SpatialSampleCount); })
-					.OnValueChanged_Lambda([this](int32 NewValue) { SpatialSampleCount = NewValue; })
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12.0f, 0.0f, 4.0f, 0.0f)
-				[
-					SNew(STextBlock).Text(LOCTEXT("LabelTemporalSamples", "时间"))
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					SNew(SNumericEntryBox<int32>)
-					.AllowSpin(false)
-					.MinValue(1)
-					.MaxValue(64)
-					.IsEnabled_Lambda([this]() { return bOverrideSampleCounts; })
 					.MinDesiredValueWidth(48.0f)
 					.Value_Lambda([this]() { return TOptional<int32>(TemporalSampleCount); })
 					.OnValueChanged_Lambda([this](int32 NewValue) { TemporalSampleCount = NewValue; })
@@ -463,7 +424,7 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 					SNew(STextBlock)
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 					.AutoWrapText(true)
-					.Text(LOCTEXT("SamplesHint", "空间采样即抗锯齿，8 是画质与耗时的常用平衡点；时间采样一般保持 1"))
+					.Text(LOCTEXT("SamplesHint", "写进每个生成的任务；走图里的采样方式节点，对延迟渲染和路径追踪都生效"))
 				])
 		]
 
@@ -1017,8 +978,6 @@ void SMRQAutoSegmentPanel::CapturePreset(FMRQSegmentPreset& OutPreset) const
 		? SelectedResolution->ProfileName.ToString()
 		: FString();
 	OutPreset.Request = Request;
-	OutPreset.bOverrideSampleCounts = bOverrideSampleCounts;
-	OutPreset.SpatialSampleCount = SpatialSampleCount;
 	OutPreset.TemporalSampleCount = TemporalSampleCount;
 }
 
@@ -1028,8 +987,6 @@ void SMRQAutoSegmentPanel::ApplyPreset(const FMRQSegmentPreset& InPreset)
 	FileNameFormat = InPreset.FileNameFormat;
 	Request = InPreset.Request;
 
-	bOverrideSampleCounts = InPreset.bOverrideSampleCounts;
-	SpatialSampleCount = FMath::Max(InPreset.SpatialSampleCount, 1);
 	TemporalSampleCount = FMath::Max(InPreset.TemporalSampleCount, 1);
 
 	// Output format. An empty class path means the preset was saved on the "(default)" entry.
@@ -1441,9 +1398,7 @@ FReply SMRQAutoSegmentPanel::HandleGenerateClicked()
 	Template.Resolution = Request.Resolution;
 	Template.JobNamePrefix = UMRQAutoSegmentLibrary::GetDefaultJobNamePrefix();
 
-	// Sample counts only exist on the generated jobs; they never influence the segmentation.
-	Template.bSetSampleCounts = bOverrideSampleCounts;
-	Template.SpatialSampleCount = SpatialSampleCount;
+	// The temporal sample count only exists on the generated jobs; it never influences segmentation.
 	Template.TemporalSampleCount = TemporalSampleCount;
 
 	// Only pin an output type when a concrete one was picked; otherwise the generated graph decides.

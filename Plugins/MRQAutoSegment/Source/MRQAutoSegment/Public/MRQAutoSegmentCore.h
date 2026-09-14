@@ -32,10 +32,14 @@ struct FMRQJobTemplate
 	/** Output node classes to enable. Empty leaves the generated graph at its default. */
 	TArray<UClass*> OutputTypes;
 
-	/** When true the generated jobs also pin the sample counts. */
-	bool bSetSampleCounts = false;
-	int32 SpatialSampleCount = 1;
-	int32 TemporalSampleCount = 1;
+	/**
+	 * Temporal sub-samples per output frame, written onto every generated job.
+	 *
+	 * This lands on the graph's sampling method node, which sits on the Globals branch, so it
+	 * applies whatever renderer the graph uses - unlike the spatial sample count, which is a
+	 * deferred-renderer property.
+	 */
+	int32 TemporalSampleCount = 8;
 
 	/** Digits used to zero pad the frame numbers inside the range label. */
 	int32 PadDigits = 4;

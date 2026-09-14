@@ -388,14 +388,11 @@ int32 FMRQAutoSegmentCore::GenerateJobs(UMoviePipelineQueue* InQueue, ULevelSequ
 			}
 		}
 
-		if (InTemplate.bSetSampleCounts)
-		{
-			Basic->bUseDeferredRenderer = true;
-			Basic->bOverride_DeferredSpatialSampleCount = true;
-			Basic->DeferredSpatialSampleCount = FMath::Max(InTemplate.SpatialSampleCount, 1);
-			Basic->bOverride_TemporalSampleCount = true;
-			Basic->TemporalSampleCount = FMath::Max(InTemplate.TemporalSampleCount, 1);
-		}
+		// Temporal samples only. They live on the graph's sampling method node on the Globals
+		// branch, so nothing about the renderer has to be forced - unlike the spatial sample
+		// count, which is a deferred-renderer property.
+		Basic->bOverride_TemporalSampleCount = true;
+		Basic->TemporalSampleCount = FMath::Max(InTemplate.TemporalSampleCount, 1);
 
 		UE_LOG(LogMRQAutoSegment, Log, TEXT("Created job '%s'  frames=%d..%d  file=%s"),
 			*Job->JobName, Entry.StartFrame, Entry.EndFrame, *Basic->FileNameFormat);

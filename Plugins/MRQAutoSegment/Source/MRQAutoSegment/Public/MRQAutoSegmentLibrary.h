@@ -48,6 +48,8 @@ public:
 	 * The range label is appended to FileNameFormat, so a FileNameFormat of "{sequence_name}"
 	 * produces files named like "<sequence>_0000-1023" and "<sequence>_1024-2047".
 	 *
+	 * @param TemporalSampleCount  Temporal sub-samples written onto every job. It lands on the
+	 *                             graph's sampling method node, so it applies to any renderer.
 	 * @return Number of jobs created.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
@@ -59,9 +61,7 @@ public:
 		const FString& OutputDirectory,
 		const FString& FileNameFormat,
 		FIntPoint Resolution,
-		bool bSetSampleCounts = false,
-		int32 SpatialSampleCount = 8,
-		int32 TemporalSampleCount = 1);
+		int32 TemporalSampleCount = 8);
 
 	/** Removes jobs whose name starts with JobNamePrefix. @return Number removed. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
