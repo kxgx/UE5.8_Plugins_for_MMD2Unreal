@@ -37,13 +37,13 @@ int32 UMRQAutoSegmentLibrary::GenerateJobs(
 	const FMRQSegmentPlan& Plan,
 	const FString& OutputDirectory,
 	const FString& FileNameFormat,
-	FIntPoint Resolution,
+	const FString& ResolutionProfile,
 	int32 TemporalSampleCount)
 {
 	FMRQJobTemplate Template;
 	Template.OutputDirectory = OutputDirectory;
 	Template.FileNameFormat = FileNameFormat;
-	Template.Resolution = Resolution;
+	Template.ResolutionProfile = ResolutionProfile.IsEmpty() ? NAME_None : FName(*ResolutionProfile);
 	Template.JobNamePrefix = GetDefaultJobNamePrefix();
 	Template.TemporalSampleCount = FMath::Max(TemporalSampleCount, 1);
 

@@ -21,13 +21,19 @@ struct FMRQOutputTypeOption
 	FString Label;
 };
 
-/** One selectable output resolution: a project preset, or the custom entry. */
+/**
+ * One selectable output resolution.
+ *
+ * These come straight from the project's named resolutions
+ * (UMovieGraphProjectSettings::DefaultNamedResolutions) - the same list the Movie Graph output
+ * node shows. The panel no longer offers a hand typed width/height, because a custom entry
+ * written onto a job's Basic config is not what the render queue expects.
+ */
 struct FMRQResolutionOption
 {
 	FName ProfileName;
 	FIntPoint Resolution = FIntPoint(1920, 1080);
 	FString Label;
-	bool bIsCustom = false;
 };
 
 /**

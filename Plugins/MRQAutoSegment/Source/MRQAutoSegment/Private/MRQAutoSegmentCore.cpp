@@ -24,6 +24,7 @@
 #include "Graph/Nodes/MovieGraphFileOutputNode.h"
 #include "Graph/Nodes/MovieGraphGlobalOutputSettingNode.h"
 #include "Graph/MovieGraphNamedResolution.h"
+#include "Graph/MovieGraphProjectSettings.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMRQAutoSegment, Log, All);
 
@@ -470,11 +471,34 @@ int32 FMRQAutoSegmentCore::GenerateJobs(UMoviePipelineQueue* InQueue, ULevelSequ
 		Basic->bOverride_CustomEndFrame = true;
 		Basic->CustomEndFrame = Entry.EndFrame + 1;
 
-		if (InTemplate.Resolution.X > 0 && InTemplate.Resolution.Y > 0)
+		// Copy the project's own named resolution onto the job, verbatim.
+		//
+		// Writing a hand built "Custom" entry here instead is what made the render queue repeat
+		// the first job: the job's Basic config ended up carrying a resolution the queue was not
+		// prepared for. Using an entry straight out of
+		// UMovieGraphProjectSettings::DefaultNamedResolutions avoids that entirely.
+		if (!InTemplate.ResolutionProfile.IsNone())
 		{
-			Basic->bOverride_OutputResolution = true;
-			Basic->OutputResolution = FMovieGraphNamedResolution(
-				FMovieGraphNamedResolution::CustomEntryName, InTemplate.Resolution, FString());
+			const UMovieGraphProjectSettings* Settings = GetDefault<UMovieGraphProjectSettings>();
+			const FMovieGraphNamedResolution* Match = Settings != nullptr
+				? Settings->DefaultNamedResolutions.FindByPredicate(
+					[&InTemplate](const FMovieGraphNamedResolution& Preset)
+					{
+						return Preset.ProfileName == InTemplate.ResolutionProfile;
+					})
+				: nullptr;
+
+			if (Match != nullptr)
+			{
+				Basic->bOverride_OutputResolution = true;
+				Basic->OutputResolution = *Match;
+			}
+			else
+			{
+				UE_LOG(LogMRQAutoSegment, Warning,
+					TEXT("Named resolution '%s' is not in the project settings; leaving the resolution to the graph."),
+					*InTemplate.ResolutionProfile.ToString());
+			}
 		}
 
 		if (InTemplate.OutputTypes.Num() > 0)

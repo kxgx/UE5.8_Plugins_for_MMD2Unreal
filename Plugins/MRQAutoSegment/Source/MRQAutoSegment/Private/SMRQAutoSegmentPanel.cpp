@@ -322,10 +322,7 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 							return;
 						}
 						SelectedResolution = Item;
-						if (!Item->bIsCustom)
-						{
-							Request.Resolution = Item->Resolution;
-						}
+						Request.Resolution = Item->Resolution;
 						RebuildPlan();
 					})
 					[
@@ -333,36 +330,20 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 						{
 							return SelectedResolution.IsValid()
 								? FText::FromString(SelectedResolution->Label)
-								: LOCTEXT("ResolutionCustom", "自定义");
+								: LOCTEXT("ResolutionNone", "（项目里没有命名分辨率）");
 						})
 					]
 				]
 
-				+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
 				[
-					SNew(SNumericEntryBox<int32>)
-					.AllowSpin(false)
-					.MinValue(1)
-					.MinDesiredValueWidth(72.0f)
-					.IsEnabled_Lambda([this]() { return !SelectedResolution.IsValid() || SelectedResolution->bIsCustom; })
-					.Value_Lambda([this]() { return TOptional<int32>(Request.Resolution.X); })
-					.OnValueChanged_Lambda([this](int32 NewValue) { Request.Resolution.X = NewValue; RebuildPlan(); })
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
-				[
-					SNew(STextBlock).Text(LOCTEXT("Times", "×"))
-				]
-
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					SNew(SNumericEntryBox<int32>)
-					.AllowSpin(false)
-					.MinValue(1)
-					.MinDesiredValueWidth(72.0f)
-					.IsEnabled_Lambda([this]() { return !SelectedResolution.IsValid() || SelectedResolution->bIsCustom; })
-					.Value_Lambda([this]() { return TOptional<int32>(Request.Resolution.Y); })
-					.OnValueChanged_Lambda([this](int32 NewValue) { Request.Resolution.Y = NewValue; RebuildPlan(); })
+					SNew(STextBlock)
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					.Text_Lambda([this]()
+					{
+						return FText::FromString(FString::Printf(TEXT("%d × %d"),
+							Request.Resolution.X, Request.Resolution.Y));
+					})
 				])
 		]
 
@@ -784,6 +765,9 @@ void SMRQAutoSegmentPanel::FillTemplate(FMRQJobTemplate& OutTemplate) const
 	OutTemplate.OutputDirectory = OutputDirectory;
 	OutTemplate.FileNameFormat = FileNameFormat;
 	OutTemplate.Resolution = Request.Resolution;
+	OutTemplate.ResolutionProfile = SelectedResolution.IsValid()
+		? SelectedResolution->ProfileName
+		: NAME_None;
 	OutTemplate.JobNamePrefix = UMRQAutoSegmentLibrary::GetDefaultJobNamePrefix();
 
 	// The temporal sample count only exists on the generated jobs; it never influences segmentation.
@@ -927,25 +911,22 @@ void SMRQAutoSegmentPanel::RefreshResolutionPresets()
 		}
 	}
 
-	// "Custom" is always last, and is what the width/height boxes are enabled by.
-	{
-		TSharedPtr<FMRQResolutionOption> Option = MakeShared<FMRQResolutionOption>();
-		Option->ProfileName = FMovieGraphNamedResolution::CustomEntryName;
-		Option->Resolution = Request.Resolution;
-		Option->Label = TEXT("自定义");
-		Option->bIsCustom = true;
-		ResolutionOptions.Add(Option);
-	}
-
-	// Preselect whichever preset already matches the current resolution; otherwise stay custom.
-	SelectedResolution = ResolutionOptions.Last();
+	// Preselect the preset the panel is already on, so a hardware rescan does not silently move
+	// the resolution; fall back to whichever entry matches the current size, then to the first.
+	SelectedResolution = ResolutionOptions.Num() > 0 ? ResolutionOptions[0] : nullptr;
 	for (const TSharedPtr<FMRQResolutionOption>& Option : ResolutionOptions)
 	{
-		if (!Option->bIsCustom && Option->Resolution == Request.Resolution)
+		if (Option->Resolution == Request.Resolution)
 		{
 			SelectedResolution = Option;
 			break;
 		}
+	}
+
+	// Keep the plan in step with whatever the dropdown ended up showing.
+	if (SelectedResolution.IsValid())
+	{
+		Request.Resolution = SelectedResolution->Resolution;
 	}
 }
 

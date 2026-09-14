@@ -46,8 +46,14 @@ public:
 	 * Writes one Movie Render Queue job per segment.
 	 *
 	 * The range label is appended to FileNameFormat, so a FileNameFormat of "{sequence_name}"
-	 * produces files named like "<sequence>_0000-1023" and "<sequence>_1024-2047".
+	 * produces files named like "<sequence>_0000-1023" and "<sequence>_1024-2047". Each job also
+	 * gets its own output folder, "<OutputDirectory>/<range label>/".
 	 *
+	 * @param ResolutionProfile    Name of one of the project's named resolutions
+	 *                             (Project Settings -> Movie Render Pipeline -> Named
+	 *                             Resolutions). It is copied onto the job verbatim. Pass an empty
+	 *                             string to leave the resolution to the generated graph; do not
+	 *                             invent a name, the entry has to exist.
 	 * @param TemporalSampleCount  Temporal sub-samples written onto every job. It lands on the
 	 *                             graph's sampling method node, so it applies to any renderer.
 	 * @return Number of jobs created.
@@ -60,7 +66,7 @@ public:
 		const FMRQSegmentPlan& Plan,
 		const FString& OutputDirectory,
 		const FString& FileNameFormat,
-		FIntPoint Resolution,
+		const FString& ResolutionProfile,
 		int32 TemporalSampleCount = 8);
 
 	/** Removes jobs whose name starts with JobNamePrefix. @return Number removed. */

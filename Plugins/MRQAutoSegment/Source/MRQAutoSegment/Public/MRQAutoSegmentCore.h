@@ -29,6 +29,21 @@ struct FMRQJobTemplate
 
 	FIntPoint Resolution = FIntPoint(1920, 1080);
 
+	/**
+	 * Name of the project's named resolution to render at, i.e. one of the entries in
+	 * UMovieGraphProjectSettings::DefaultNamedResolutions - the same list the Movie Graph output
+	 * node offers.
+	 *
+	 * The entry is copied onto the job verbatim. The plugin deliberately does not write a hand
+	 * built "Custom" entry: a job whose Basic config carries one is not what the render queue
+	 * expects, and the queue then re-renders the first job over and over. To render at a size
+	 * that is not in the list yet, add it under
+	 * Project Settings -> Movie Render Pipeline -> Named Resolutions; it will show up here.
+	 *
+	 * Empty means "leave the resolution to the generated graph".
+	 */
+	FName ResolutionProfile;
+
 	/** Output node classes to enable. Empty leaves the generated graph at its default. */
 	TArray<UClass*> OutputTypes;
 
