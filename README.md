@@ -6,6 +6,7 @@
 |---|---|
 | **[HEVC10Output](Plugins/HEVC10Output)** | 给 Movie Render Graph 加一个 **10-bit H.265 (HEVC) MP4** 输出节点。渲染帧通过 stdin 管道直喂 ffmpeg，**无中间图像序列文件**，编码与渲染并行。 |
 | **[MMDSequencerPreview](Plugins/MMDSequencerPreview)** | Sequencer 打开时，自动驱动 **MMD2Unreal** 导入的角色动画在编辑器视口里按时间轴回放。 |
+| **[MRQAutoSegment](Plugins/MRQAutoSegment)** | 探测空闲内存 / 显存 / 磁盘，把长镜头切成多个渲染任务，每个任务的输出文件名带自己的帧范围。 |
 
 引擎版本：**UE 5.8**（Windows）
 构建工具：Visual Studio 2022 + C++ 工具链
@@ -43,7 +44,7 @@ YourProject/
     -Project="C:\Path\To\YourProject.uproject" -WaitMutex
 ```
 
-> 如果你只想用其中一个，单独拷对应目录即可，两个插件互不依赖。
+> 如果你只想用其中一个，单独拷对应目录即可，三个插件互不依赖。
 
 ---
 
@@ -139,6 +140,58 @@ AnimSequence.AssetUserData 中存在类名为 "MMDVmdAssetUserData" 的条目
 
 ---
 
+## MRQAutoSegment
+
+### 为什么需要它
+
+一次几千帧的长镜头渲染，最大的风险不是慢，而是**跑到 90% 崩了，一晚白干**。
+但"切多长一段"没有标准答案——它取决于这台机器还剩多少内存和显存。
+
+### 实现方式
+
+探测 `FPlatformMemory::GetStats()`、`RHIGetTextureMemoryStats()`、
+`FPlatformMisc::GetDiskTotalAndFreeSpace()`，然后：
+
+```
+每段帧数 = min(
+    空闲内存 × (1 - 保留率) ÷ (帧缓冲 × 每帧增长系数),
+    空闲显存 × (1 - 保留率) ÷ (帧缓冲 × 每帧增长系数),
+    用户设的每段上限
+)
+```
+
+面板会把**每条约束算出的帧数逐条列出**，给真正决定结果的那条打 `★`，并把算式
+（可用多少 ÷ 每帧多少）一起显示出来——数字是可见、可调、可质疑的，不是黑箱。
+
+任务用 **Basic 配置模式**创建。该模式在渲染前**即时生成 `UMovieGraphConfig`**，
+所以 `FileNameFormat` / `CustomStartFrame` / `CustomEndFrame` 都只是普通字段，可以逐任务设置，
+**既不用复制也不用改动你自己的 Movie Graph 资产**。
+
+### 用法
+
+关卡编辑器工具栏的 **「MRQ 分段」** 按钮，或菜单 **工具 → MRQ 分段**，或控制台
+`MRQAutoSegment.Open`。调好参数后点「生成渲染队列」。
+
+文件名：帧范围自动追加在你的格式串末尾——
+`{sequence_name}` → `{sequence_name}_0000-0724`、`{sequence_name}_0725-1449` …
+
+也完全可以用 Python 驱动，绕开 UI：
+
+```python
+import unreal
+lib = unreal.MRQAutoSegmentLibrary
+req = unreal.MRQSegmentRequest()
+req.set_editor_property("range_end", 6149)
+plan = lib.plan_from_hardware(req, "D:/Renders")
+lib.generate_jobs(lib.get_editor_queue(), unreal.load_asset("/Game/MySequence"),
+                  "/Game/Main", plan, "D:/Renders", "{sequence_name}",
+                  unreal.IntPoint(3840, 2160))
+```
+
+算法推导过程和已知边界见 [插件 README](Plugins/MRQAutoSegment/README.md)。
+
+---
+
 ## 已知边界
 
 - **MMDSequencerPreview 只处理「动画单一节点」模式的组件。** 用 AnimationBlueprint 的
@@ -147,7 +200,12 @@ AnimSequence.AssetUserData 中存在类名为 "MMDVmdAssetUserData" 的条目
   ```bash
   ffmpeg -i video.mp4 -i audio.wav -c:v copy -c:a aac -b:a 320k -shortest out.mp4
   ```
-- 两个插件都在 **UE 5.8 / Windows** 上开发验证，未在其他版本或平台测试。
+- **MRQAutoSegment 的"空闲显存"只统计本进程。** `RHIGetTextureMemoryStats()` 看得到显存总量和
+  UE 自己分配了多少，但**看不到其他程序占用的显存**，所以那是上界，默认留 20% 保留量覆盖它。
+  每帧增长系数也是估计值而非实测值——面板把算式显示出来就是为了让你能反驳它。
+- **MRQAutoSegment 生成的 Basic 模式任务会即时生成自己的图**，不复用你的 Movie Graph 资产。
+  如果你的图里有精细的多分支 / 自定义 Pass 配置，它们不会被带上。
+- 三个插件都在 **UE 5.8 / Windows** 上开发验证，未在其他版本或平台测试。
 
 ## 许可
 
