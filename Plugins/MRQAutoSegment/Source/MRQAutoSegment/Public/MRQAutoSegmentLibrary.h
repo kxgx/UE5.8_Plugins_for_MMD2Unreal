@@ -22,9 +22,9 @@ class MRQAUTOSEGMENT_API UMRQAutoSegmentLibrary : public UBlueprintFunctionLibra
 	GENERATED_BODY()
 
 public:
-	/** Reads free RAM, free video memory and free disk space right now. */
+	/** Reads free system RAM and free video memory right now. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
-	static FMRQHardwareBudget ProbeHardware(const FString& OutputDirectory);
+	static FMRQHardwareBudget ProbeHardware();
 
 	/** Computes the segment list from an explicit hardware snapshot. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
@@ -32,7 +32,7 @@ public:
 
 	/** Probes the hardware and plans in one call - the usual entry point. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
-	static FMRQSegmentPlan PlanFromHardware(const FMRQSegmentRequest& Request, const FString& OutputDirectory);
+	static FMRQSegmentPlan PlanFromHardware(const FMRQSegmentRequest& Request);
 
 	/**
 	 * Writes one Movie Render Queue job per segment.

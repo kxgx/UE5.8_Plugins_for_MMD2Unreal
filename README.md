@@ -6,7 +6,7 @@
 |---|---|
 | **[HEVC10Output](Plugins/HEVC10Output)** | 给 Movie Render Graph 加一个 **10-bit H.265 (HEVC) MP4** 输出节点。渲染帧通过 stdin 管道直喂 ffmpeg，**无中间图像序列文件**，编码与渲染并行。 |
 | **[MMDSequencerPreview](Plugins/MMDSequencerPreview)** | Sequencer 打开时，自动驱动 **MMD2Unreal** 导入的角色动画在编辑器视口里按时间轴回放。 |
-| **[MRQAutoSegment](Plugins/MRQAutoSegment)** | 探测空闲内存 / 显存 / 磁盘，把长镜头切成多个渲染任务，每个任务的输出文件名带自己的帧范围。 |
+| **[MRQAutoSegment](Plugins/MRQAutoSegment)** | 探测空闲内存 / 显存（只用其中 80%，可调），把长镜头切成多个渲染任务，每个任务的输出文件名带自己的帧范围。 |
 
 引擎版本：**UE 5.8**（Windows）
 构建工具：Visual Studio 2022 + C++ 工具链
@@ -149,19 +149,20 @@ AnimSequence.AssetUserData 中存在类名为 "MMDVmdAssetUserData" 的条目
 
 ### 实现方式
 
-探测 `FPlatformMemory::GetStats()`、`RHIGetTextureMemoryStats()`、
-`FPlatformMisc::GetDiskTotalAndFreeSpace()`，然后：
+探测 `FPlatformMemory::GetStats()` 和 `RHIGetTextureMemoryStats()`，然后：
 
 ```
 每段帧数 = min(
-    空闲内存 × (1 - 保留率) ÷ (帧缓冲 × 每帧增长系数),
-    空闲显存 × (1 - 保留率) ÷ (帧缓冲 × 每帧增长系数),
+    空闲内存 × 内存使用上限 ÷ (帧缓冲 × 每帧增长系数),
+    空闲显存 × 显存使用上限 ÷ (帧缓冲 × 每帧增长系数),
     用户设的每段上限
 )
 ```
 
+**使用上限默认 80%，在面板里可调**；只看内存和显存，磁盘容量不参与计算。
+
 面板会把**每条约束算出的帧数逐条列出**，给真正决定结果的那条打 `★`，并把算式
-（可用多少 ÷ 每帧多少）一起显示出来——数字是可见、可调、可质疑的，不是黑箱。
+（空闲的百分之多少 = 多少字节 ÷ 每帧多少）一起显示出来——数字是可见、可调、可质疑的，不是黑箱。
 
 任务用 **Basic 配置模式**创建。该模式在渲染前**即时生成 `UMovieGraphConfig`**，
 所以 `FileNameFormat` / `CustomStartFrame` / `CustomEndFrame` 都只是普通字段，可以逐任务设置，
@@ -173,7 +174,7 @@ AnimSequence.AssetUserData 中存在类名为 "MMDVmdAssetUserData" 的条目
 `MRQAutoSegment.Open`。调好参数后点「生成渲染队列」。
 
 文件名：帧范围自动追加在你的格式串末尾——
-`{sequence_name}` → `{sequence_name}_0000-0724`、`{sequence_name}_0725-1449` …
+`{sequence_name}` → `{sequence_name}_0000-0733`、`{sequence_name}_0734-1467` …
 
 也完全可以用 Python 驱动，绕开 UI：
 
@@ -182,7 +183,9 @@ import unreal
 lib = unreal.MRQAutoSegmentLibrary
 req = unreal.MRQSegmentRequest()
 req.set_editor_property("range_end", 6149)
-plan = lib.plan_from_hardware(req, "D:/Renders")
+req.set_editor_property("ram_use_limit", 0.8)   # 空闲内存的 80%
+req.set_editor_property("vram_use_limit", 0.8)  # 空闲显存的 80%
+plan = lib.plan_from_hardware(req)
 lib.generate_jobs(lib.get_editor_queue(), unreal.load_asset("/Game/MySequence"),
                   "/Game/Main", plan, "D:/Renders", "{sequence_name}",
                   unreal.IntPoint(3840, 2160))
@@ -201,8 +204,8 @@ lib.generate_jobs(lib.get_editor_queue(), unreal.load_asset("/Game/MySequence"),
   ffmpeg -i video.mp4 -i audio.wav -c:v copy -c:a aac -b:a 320k -shortest out.mp4
   ```
 - **MRQAutoSegment 的"空闲显存"只统计本进程。** `RHIGetTextureMemoryStats()` 看得到显存总量和
-  UE 自己分配了多少，但**看不到其他程序占用的显存**，所以那是上界，默认留 20% 保留量覆盖它。
-  每帧增长系数也是估计值而非实测值——面板把算式显示出来就是为了让你能反驳它。
+  UE 自己分配了多少，但**看不到其他程序占用的显存**，所以那是上界，默认只用它的 80% 正是为了
+  覆盖这部分。每帧增长系数也是估计值而非实测值——面板把算式显示出来就是为了让你能反驳它。
 - **MRQAutoSegment 生成的 Basic 模式任务会即时生成自己的图**，不复用你的 Movie Graph 资产。
   如果你的图里有精细的多分支 / 自定义 Pass 配置，它们不会被带上。
 - 三个插件都在 **UE 5.8 / Windows** 上开发验证，未在其他版本或平台测试。

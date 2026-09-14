@@ -9,9 +9,9 @@
 #include "MoviePipelineQueue.h"
 #include "MoviePipelineQueueSubsystem.h"
 
-FMRQHardwareBudget UMRQAutoSegmentLibrary::ProbeHardware(const FString& OutputDirectory)
+FMRQHardwareBudget UMRQAutoSegmentLibrary::ProbeHardware()
 {
-	return FMRQAutoSegmentCore::ProbeHardware(OutputDirectory);
+	return FMRQAutoSegmentCore::ProbeHardware();
 }
 
 FMRQSegmentPlan UMRQAutoSegmentLibrary::BuildPlan(const FMRQSegmentRequest& Request, const FMRQHardwareBudget& Budget)
@@ -19,9 +19,9 @@ FMRQSegmentPlan UMRQAutoSegmentLibrary::BuildPlan(const FMRQSegmentRequest& Requ
 	return FMRQAutoSegmentCore::BuildPlan(Request, Budget);
 }
 
-FMRQSegmentPlan UMRQAutoSegmentLibrary::PlanFromHardware(const FMRQSegmentRequest& Request, const FString& OutputDirectory)
+FMRQSegmentPlan UMRQAutoSegmentLibrary::PlanFromHardware(const FMRQSegmentRequest& Request)
 {
-	const FMRQHardwareBudget Budget = FMRQAutoSegmentCore::ProbeHardware(OutputDirectory);
+	const FMRQHardwareBudget Budget = FMRQAutoSegmentCore::ProbeHardware();
 	return FMRQAutoSegmentCore::BuildPlan(Request, Budget);
 }
 

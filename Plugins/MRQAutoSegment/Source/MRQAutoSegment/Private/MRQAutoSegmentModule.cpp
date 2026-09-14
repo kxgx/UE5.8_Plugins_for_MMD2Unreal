@@ -110,7 +110,7 @@ void FMRQAutoSegmentModule::UnregisterConsoleCommands()
 
 void FMRQAutoSegmentModule::HandleProbeCommand()
 {
-	const FMRQHardwareBudget Budget = FMRQAutoSegmentCore::ProbeHardware(FString());
+	const FMRQHardwareBudget Budget = FMRQAutoSegmentCore::ProbeHardware();
 	UE_LOG(LogTemp, Display, TEXT("[MRQAutoSegment] RAM  free %s / total %s"),
 		*FMRQAutoSegmentCore::FormatBytes(Budget.AvailablePhysicalRAM),
 		*FMRQAutoSegmentCore::FormatBytes(Budget.TotalPhysicalRAM));
@@ -119,13 +119,11 @@ void FMRQAutoSegmentModule::HandleProbeCommand()
 		*FMRQAutoSegmentCore::FormatBytes(Budget.TotalVRAM),
 		*FMRQAutoSegmentCore::FormatBytes(Budget.EngineUsedVRAM),
 		*Budget.AdapterName);
-	UE_LOG(LogTemp, Display, TEXT("[MRQAutoSegment] Disk free %s"),
-		*FMRQAutoSegmentCore::FormatBytes(Budget.FreeDiskBytes));
 }
 
 void FMRQAutoSegmentModule::HandlePlanCommand()
 {
-	const FMRQHardwareBudget Budget = FMRQAutoSegmentCore::ProbeHardware(FString());
+	const FMRQHardwareBudget Budget = FMRQAutoSegmentCore::ProbeHardware();
 
 	FMRQSegmentRequest Request;
 	Request.RangeStart = 0;

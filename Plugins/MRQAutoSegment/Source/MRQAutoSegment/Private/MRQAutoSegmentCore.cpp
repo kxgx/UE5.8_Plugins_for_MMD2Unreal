@@ -2,10 +2,7 @@
 
 #include "MRQAutoSegmentCore.h"
 
-#include "HAL/FileManager.h"
 #include "HAL/PlatformMemory.h"
-#include "HAL/PlatformMisc.h"
-#include "Misc/Paths.h"
 #include "RHI.h"
 #include "RHIGlobals.h"
 
@@ -48,7 +45,7 @@ FString FMRQAutoSegmentCore::FormatBytes(int64 InBytes)
 	return FString::Printf(TEXT("%.2f %s"), Value, Units[UnitIndex]);
 }
 
-FMRQHardwareBudget FMRQAutoSegmentCore::ProbeHardware(const FString& InOutputDirectory)
+FMRQHardwareBudget FMRQAutoSegmentCore::ProbeHardware()
 {
 	FMRQHardwareBudget Budget;
 
@@ -59,8 +56,8 @@ FMRQHardwareBudget FMRQAutoSegmentCore::ProbeHardware(const FString& InOutputDir
 
 	// --- Video memory ---------------------------------------------------------------------
 	// The RHI can only report what this process has allocated, so AvailableVRAM is an upper
-	// bound: memory held by other applications is invisible from in here. The planner keeps a
-	// reserve fraction for exactly that reason.
+	// bound: memory held by other applications is invisible from in here. The planner therefore
+	// only ever uses a fraction of it - see RAMUseLimit / VRAMUseLimit, 80% by default.
 	if (GDynamicRHI != nullptr)
 	{
 		FTextureMemoryStats TexStats;
@@ -76,38 +73,11 @@ FMRQHardwareBudget FMRQAutoSegmentCore::ProbeHardware(const FString& InOutputDir
 
 	Budget.AdapterName = GRHIAdapterName;
 
-	// --- Free disk space ------------------------------------------------------------------
-	// GetDiskTotalAndFreeSpace wants a path that exists, so walk up until we find one.
-	FString ProbePath = InOutputDirectory;
-	if (ProbePath.IsEmpty())
-	{
-		ProbePath = FPaths::ProjectDir();
-	}
-	ProbePath = FPaths::ConvertRelativePathToFull(ProbePath);
-
-	while (!ProbePath.IsEmpty() && !IFileManager::Get().DirectoryExists(*ProbePath))
-	{
-		const FString Parent = FPaths::GetPath(ProbePath);
-		if (Parent.IsEmpty() || Parent == ProbePath)
-		{
-			break;
-		}
-		ProbePath = Parent;
-	}
-
-	uint64 TotalBytes = 0;
-	uint64 FreeBytes = 0;
-	if (!ProbePath.IsEmpty() && FPlatformMisc::GetDiskTotalAndFreeSpace(ProbePath, TotalBytes, FreeBytes))
-	{
-		Budget.FreeDiskBytes = static_cast<int64>(FreeBytes);
-	}
-
 	UE_LOG(LogMRQAutoSegment, Log,
-		TEXT("Hardware: RAM %s free / %s total, VRAM %s free / %s total (engine using %s)%s, disk %s free on %s"),
+		TEXT("Hardware: RAM %s free / %s total, VRAM %s free / %s total (engine using %s)%s"),
 		*FormatBytes(Budget.AvailablePhysicalRAM), *FormatBytes(Budget.TotalPhysicalRAM),
 		*FormatBytes(Budget.AvailableVRAM), *FormatBytes(Budget.TotalVRAM), *FormatBytes(Budget.EngineUsedVRAM),
-		Budget.bVRAMKnown ? TEXT("") : TEXT(" [VRAM unknown]"),
-		*FormatBytes(Budget.FreeDiskBytes), *ProbePath);
+		Budget.bVRAMKnown ? TEXT("") : TEXT(" [VRAM unknown]"));
 
 	return Budget;
 }
@@ -166,10 +136,15 @@ FMRQSegmentPlan FMRQAutoSegmentCore::BuildPlan(const FMRQSegmentRequest& InReque
 	const int64 VRAMPerFrame = FMath::Max<int64>(
 		static_cast<int64>(static_cast<double>(FrameBufferBytes) * FMath::Max(InRequest.VRAMGrowthPerFrame, 0.0f)), 1);
 
+	// The render is held to a fraction of what is *currently free*, so the rest stays available to
+	// the OS, to other applications and to the editor itself.
+	const float RAMLimit = FMath::Clamp(InRequest.RAMUseLimit, 0.05f, 1.0f);
+	const float VRAMLimit = FMath::Clamp(InRequest.VRAMUseLimit, 0.05f, 1.0f);
+
 	const int64 UsableRAM = FMath::Max<int64>(
-		static_cast<int64>(static_cast<double>(InBudget.AvailablePhysicalRAM) * (1.0 - FMath::Clamp(InRequest.RAMReserveFraction, 0.0f, 0.95f))), 0);
+		static_cast<int64>(static_cast<double>(InBudget.AvailablePhysicalRAM) * RAMLimit), 0);
 	const int64 UsableVRAM = FMath::Max<int64>(
-		static_cast<int64>(static_cast<double>(InBudget.AvailableVRAM) * (1.0 - FMath::Clamp(InRequest.VRAMReserveFraction, 0.0f, 0.95f))), 0);
+		static_cast<int64>(static_cast<double>(InBudget.AvailableVRAM) * VRAMLimit), 0);
 
 	const int32 FramesByRAM = static_cast<int32>(FMath::Clamp<int64>(UsableRAM / RAMPerFrame, 1, kNoLimit));
 	const int32 FramesByVRAM = InBudget.bVRAMKnown
@@ -224,9 +199,8 @@ FMRQSegmentPlan FMRQAutoSegmentCore::BuildPlan(const FMRQSegmentRequest& InReque
 			FMRQSegmentConstraint Row;
 			Row.Name = TEXT("系统内存");
 			Row.Frames = FramesByRAM;
-			Row.Detail = FString::Printf(TEXT("可用 %s（已扣 %d%% 保留）÷ 每帧约 %s"),
-				*FormatBytes(UsableRAM), FMath::RoundToInt(FMath::Clamp(InRequest.RAMReserveFraction, 0.0f, 0.95f) * 100.0f),
-				*FormatBytes(RAMPerFrame));
+			Row.Detail = FString::Printf(TEXT("空闲的 %d%% = %s ÷ 每帧约 %s"),
+				FMath::RoundToInt(RAMLimit * 100.0f), *FormatBytes(UsableRAM), *FormatBytes(RAMPerFrame));
 			Row.bBinding = (Binding == EMRQSegmentBound::SystemRAM);
 			Plan.Constraints.Add(Row);
 		}
@@ -237,9 +211,8 @@ FMRQSegmentPlan FMRQAutoSegmentCore::BuildPlan(const FMRQSegmentRequest& InReque
 			Row.Frames = FramesByVRAM;
 			if (InBudget.bVRAMKnown)
 			{
-				Row.Detail = FString::Printf(TEXT("可用 %s（已扣 %d%% 保留）÷ 每帧约 %s"),
-					*FormatBytes(UsableVRAM), FMath::RoundToInt(FMath::Clamp(InRequest.VRAMReserveFraction, 0.0f, 0.95f) * 100.0f),
-					*FormatBytes(VRAMPerFrame));
+				Row.Detail = FString::Printf(TEXT("空闲的 %d%% = %s ÷ 每帧约 %s"),
+					FMath::RoundToInt(VRAMLimit * 100.0f), *FormatBytes(UsableVRAM), *FormatBytes(VRAMPerFrame));
 			}
 			else
 			{
@@ -265,30 +238,6 @@ FMRQSegmentPlan FMRQAutoSegmentCore::BuildPlan(const FMRQSegmentRequest& InReque
 	Plan.FramesPerSegment = FramesPerSegment;
 	Plan.SegmentCount = FMath::DivideAndRoundUp(TotalFrames, FramesPerSegment);
 	Plan.Binding = Binding;
-
-	// --- Disk: reported, but it does not shorten a segment, it limits the whole render -------
-	if (InRequest.bLimitByDisk && InBudget.FreeDiskBytes > 0)
-	{
-		const int64 DiskBudget = static_cast<int64>(
-			static_cast<double>(InBudget.FreeDiskBytes) * FMath::Clamp(InRequest.DiskUseFraction, 0.0f, 0.95f));
-		const int64 EstimatedTotal = FrameBufferBytes * static_cast<int64>(TotalFrames);
-		const bool bFits = EstimatedTotal <= DiskBudget;
-
-		FMRQSegmentConstraint Row;
-		Row.Name = TEXT("磁盘空间");
-		Row.Frames = kNoLimit;
-		Row.Detail = FString::Printf(TEXT("整段预计 %s / 可用 %s（可用额度 %s）"),
-			*FormatBytes(EstimatedTotal), *FormatBytes(InBudget.FreeDiskBytes), *FormatBytes(DiskBudget));
-		Row.bBinding = false;
-		Plan.Constraints.Add(Row);
-
-		if (!bFits)
-		{
-			Plan.Message = FString::Printf(
-				TEXT("警告：整段输出预计需要 %s，超过磁盘可用额度 %s。建议减小范围、降低分辨率或改输出格式。"),
-				*FormatBytes(EstimatedTotal), *FormatBytes(DiskBudget));
-		}
-	}
 
 	// --- Materialise the segments -----------------------------------------------------------
 	const int32 PadDigits = FMath::Clamp(InRequest.LabelPadDigits, 1, 10);

@@ -50,11 +50,8 @@ struct FMRQJobTemplate
 class FMRQAutoSegmentCore
 {
 public:
-	/**
-	 * Reads free RAM, free video memory and free disk space.
-	 * @param InOutputDirectory  Volume to measure for free space. Falls back to the project dir.
-	 */
-	static FMRQHardwareBudget ProbeHardware(const FString& InOutputDirectory);
+	/** Reads free system RAM and free video memory. */
+	static FMRQHardwareBudget ProbeHardware();
 
 	/** Turns a request plus a hardware snapshot into a concrete list of segments. */
 	static FMRQSegmentPlan BuildPlan(const FMRQSegmentRequest& InRequest, const FMRQHardwareBudget& InBudget);

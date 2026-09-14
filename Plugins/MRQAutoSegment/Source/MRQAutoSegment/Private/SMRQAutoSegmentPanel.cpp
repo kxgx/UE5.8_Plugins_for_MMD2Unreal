@@ -164,16 +164,6 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildHardwareSection()
 				{
 					return FText::FromString(Budget.AdapterName.IsEmpty() ? TEXT("(未知)") : Budget.AdapterName);
 				}))
-		]
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			MakeRow(LOCTEXT("LabelDisk", "输出盘剩余"),
-				SNew(STextBlock).Text_Lambda([this]()
-				{
-					return FText::FromString(UMRQAutoSegmentLibrary::FormatBytes(Budget.FreeDiskBytes));
-				}))
 		];
 }
 
@@ -471,6 +461,61 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 				[
 					SNew(STextBlock).Text(LOCTEXT("PadDigits", "帧号补零位数"))
 				])
+		]
+
+		// --- capacity use limits ------------------------------------------------
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			MakeRow(LOCTEXT("LabelUseLimit", "使用上限"),
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SNumericEntryBox<int32>)
+					.AllowSpin(false)
+					.MinValue(5)
+					.MaxValue(100)
+					.MinDesiredValueWidth(48.0f)
+					.Value_Lambda([this]() { return TOptional<int32>(FMath::RoundToInt(Request.RAMUseLimit * 100.0f)); })
+					.OnValueChanged_Lambda([this](int32 NewValue)
+					{
+						Request.RAMUseLimit = FMath::Clamp(NewValue, 5, 100) / 100.0f;
+						RebuildPlan();
+					})
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 16.0f, 0.0f)
+				[
+					SNew(STextBlock).Text(LOCTEXT("PercentRAM", "% 内存空闲"))
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SNumericEntryBox<int32>)
+					.AllowSpin(false)
+					.MinValue(5)
+					.MaxValue(100)
+					.MinDesiredValueWidth(48.0f)
+					.Value_Lambda([this]() { return TOptional<int32>(FMath::RoundToInt(Request.VRAMUseLimit * 100.0f)); })
+					.OnValueChanged_Lambda([this](int32 NewValue)
+					{
+						Request.VRAMUseLimit = FMath::Clamp(NewValue, 5, 100) / 100.0f;
+						RebuildPlan();
+					})
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 12.0f, 0.0f)
+				[
+					SNew(STextBlock).Text(LOCTEXT("PercentVRAM", "% 显存空闲"))
+				]
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					.Text(LOCTEXT("UseLimitHint", "只占用空闲容量的一部分，其余留给系统和其他程序"))
+				])
 		];
 }
 
@@ -634,7 +679,7 @@ void SMRQAutoSegmentPanel::RefreshOutputTypes()
 
 void SMRQAutoSegmentPanel::ProbeAndPlan()
 {
-	Budget = UMRQAutoSegmentLibrary::ProbeHardware(OutputDirectory);
+	Budget = UMRQAutoSegmentLibrary::ProbeHardware();
 	RebuildPlan();
 }
 

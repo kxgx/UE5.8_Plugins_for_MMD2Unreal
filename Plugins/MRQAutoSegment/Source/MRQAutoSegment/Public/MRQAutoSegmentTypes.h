@@ -24,7 +24,6 @@ enum class EMRQSegmentBound : uint8
 	None,
 	SystemRAM,
 	VideoRAM,
-	DiskSpace,
 	UserCap
 };
 
@@ -54,10 +53,6 @@ struct FMRQHardwareBudget
 	/** TotalVRAM - EngineUsedVRAM, clamped at 0. Only counts *this* process's allocations. */
 	UPROPERTY(BlueprintReadOnly, Category = "Hardware")
 	int64 AvailableVRAM = 0;
-
-	/** Free space on the volume that holds the output directory. */
-	UPROPERTY(BlueprintReadOnly, Category = "Hardware")
-	int64 FreeDiskBytes = 0;
 
 	/** Adapter name, for display only. */
 	UPROPERTY(BlueprintReadOnly, Category = "Hardware")
@@ -172,21 +167,21 @@ struct FMRQSegmentRequest
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Estimates", meta = (ClampMin = 0.0))
 	float VRAMGrowthPerFrame = 0.5f;
 
-	/** Fraction of free RAM held back for the OS, other apps and the editor itself. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Estimates", meta = (ClampMin = 0.0, ClampMax = 0.95))
-	float RAMReserveFraction = 0.25f;
+	/**
+	 * How much of the free system RAM the render may use at most.
+	 * 0.8 = stay within 80% of what is currently free; the other 20% is left to the OS,
+	 * other applications and the editor itself.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Estimates", meta = (ClampMin = 0.05, ClampMax = 1.0))
+	float RAMUseLimit = 0.8f;
 
-	/** Fraction of free VRAM held back. Covers allocations we cannot see from in-process. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Estimates", meta = (ClampMin = 0.0, ClampMax = 0.95))
-	float VRAMReserveFraction = 0.20f;
-
-	/** Whether free disk space should also cap the segment length. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Estimates")
-	bool bLimitByDisk = true;
-
-	/** Fraction of free disk space the whole render may consume. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Estimates", meta = (ClampMin = 0.0, ClampMax = 0.95))
-	float DiskUseFraction = 0.5f;
+	/**
+	 * How much of the free video memory the render may use at most.
+	 * 0.8 = stay within 80% of what is currently free. The margin covers what the RHI cannot
+	 * see, namely video memory held by other applications.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Estimates", meta = (ClampMin = 0.05, ClampMax = 1.0))
+	float VRAMUseLimit = 0.8f;
 };
 
 /** A complete, ready-to-apply segmentation. */
