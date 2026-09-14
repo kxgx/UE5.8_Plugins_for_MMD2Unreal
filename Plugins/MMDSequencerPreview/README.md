@@ -109,20 +109,23 @@ Plugins/MMDSequencerPreview/
 
 ## 重新编译
 
-本仓库是**纯源码**，跟着你的工程一起编译即可。
+见 `Plugins/HEVC10Output/README.md` 里的「重编插件」一节，流程完全一样：
+临时把工程转成 C++ 工程 + 停用 MMD2Unreal 的 Source，编完立刻还原。
 
-```bash
-"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" ^
-    YourProjectEditor Win64 Development ^
-    -Project="C:\Path\To\YourProject.uproject" -WaitMutex
+工程里已经放好了 `Tools/build_env.ps1`，一条命令完成准备工作：
+
+```powershell
+# 准备构建环境（会自动停用 MMD2Unreal 的 Source、恢复插件源码、加临时工程模块）
+powershell -ExecutionPolicy Bypass -File Tools\build_env.ps1 -Mode enable
+
+# 编译
+& "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" `
+    MMD_testEditor Win64 Development -Project="C:\UE5\MMD_test\MMD_test.uproject" -WaitMutex
+
+# 还原（务必执行，否则工程处于 C++ 状态且 MMD2Unreal 被禁用）
+powershell -ExecutionPolicy Bypass -File Tools\build_env.ps1 -Mode disable
 ```
 
-或者在编辑器里改完代码后按 **Ctrl+Alt+F11**（Live Coding）。
-
-> ⚠️ **一个坑**：如果你的工程里同时装了**只有 `Build.cs`、没有实现代码的二进制插件**
-> （MMD2Unreal 就是这种形态），一旦工程被 UBT 视为 C++ 工程，UBT 会把它当源码模块去编译，
-> **生成一个空壳 DLL 覆盖掉原来的真货**，导致那个插件初始化失败。
-> 编译期间把那种插件的 `Source` 目录临时改名移开，编完再改回来即可。
->
-> 顺带一提：**本插件并不需要 MMD2Unreal 才能编译** —— 它不链接、不依赖 MMD2Unreal，
-> 只是运行时通过资产标记识别 MMD2Unreal 导入的数据。
+> ⚠️ **为什么要停用 MMD2Unreal**：它是只有 `Build.cs`、没有源码的二进制插件。
+> 一旦工程变成 C++ 工程，UBT 会把它当源码模块重编，生成一个空壳 DLL 覆盖掉真货，
+> 导致插件初始化失败。原始二进制备份在工程之外（例如 `%USERPROFILE%\MMD2Unreal\Binaries\Win64\`）。

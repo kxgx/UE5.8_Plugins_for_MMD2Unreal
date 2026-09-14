@@ -70,7 +70,7 @@ ffmpeg -i "NewLevelSequence.beauty.mp4" -i "NewLevelSequence.wav" `
 里只有 `Build.cs`，没有实现代码）。一旦把工程变成 C++ 工程，UBT 就会把它当源码模块
 **重新编译成一个 48 KB 的空壳 DLL**，覆盖掉原本 446 KB / 3306 KB 的真货，导致插件初始化失败。
 
-原始二进制备份在 `C:\Users\26959\MMD2Unreal\Binaries\Win64\`。
+原始二进制备份在工程之外（例如 `%USERPROFILE%\MMD2Unreal\Binaries\Win64\`）。
 
 ### 如果要改插件代码并重编
 

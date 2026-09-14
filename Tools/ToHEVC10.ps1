@@ -33,11 +33,19 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # --- locate ffmpeg -----------------------------------------------------------
-# Falls back to $env:FFMPEG if ffmpeg is not on PATH.
 $ffmpeg = (Get-Command ffmpeg -ErrorAction SilentlyContinue).Source
-if (-not $ffmpeg -and $env:FFMPEG) { $ffmpeg = $env:FFMPEG }
+if (-not $ffmpeg) {
+    # Not on PATH - try the locations the common package managers install into.
+    $candidates = @(
+        "$env:USERPROFILE\scoop\shims\ffmpeg.exe"
+        "$env:LOCALAPPDATA\Microsoft\WinGet\Links\ffmpeg.exe"
+        "$env:ProgramData\chocolatey\bin\ffmpeg.exe"
+        'C:\ffmpeg\bin\ffmpeg.exe'
+    )
+    $ffmpeg = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
 if (-not $ffmpeg -or -not (Test-Path $ffmpeg)) {
-    throw "ffmpeg not found. Put it on PATH, or set `$env:FFMPEG to the full path of ffmpeg.exe."
+    throw "ffmpeg not found. Install it and put it on PATH, then re-run."
 }
 
 # --- resolve input -----------------------------------------------------------
