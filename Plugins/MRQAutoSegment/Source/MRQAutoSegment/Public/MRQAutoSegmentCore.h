@@ -56,6 +56,19 @@ public:
 	/** Turns a request plus a hardware snapshot into a concrete list of segments. */
 	static FMRQSegmentPlan BuildPlan(const FMRQSegmentRequest& InRequest, const FMRQHardwareBudget& InBudget);
 
+	/**
+	 * Best-effort number of bytes a single output pixel occupies for the given output node class.
+	 *
+	 * The graph's output nodes do not expose their bit depth as a reflected property -
+	 * UMoviePipelineVideoOutputBase takes it as a function argument, and the image sequence nodes
+	 * keep EImageFormat as a plain C++ member - so known formats are matched by class name.
+	 * OutReason describes how the number was arrived at and is shown in the panel, so a wrong
+	 * guess is visible rather than silent.
+	 *
+	 * @return Bytes per pixel, or 4 when nothing is recognised.
+	 */
+	static int32 GetBytesPerPixelForOutputType(const UClass* InOutputType, FString& OutReason);
+
 	/** "0000-1023", zero padded to PadDigits. */
 	static FString MakeRangeLabel(int32 StartFrame, int32 EndFrame, int32 PadDigits);
 

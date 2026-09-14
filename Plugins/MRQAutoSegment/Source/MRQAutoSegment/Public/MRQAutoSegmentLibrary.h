@@ -8,6 +8,7 @@
 #include "MRQAutoSegmentLibrary.generated.h"
 
 class ULevelSequence;
+class UMovieGraphFileOutputNode;
 class UMoviePipelineQueue;
 
 /**
@@ -33,6 +34,13 @@ public:
 	/** Probes the hardware and plans in one call - the usual entry point. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
 	static FMRQSegmentPlan PlanFromHardware(const FMRQSegmentRequest& Request);
+
+	/**
+	 * Best-effort bytes-per-pixel for an output node class, with a human readable reason.
+	 * See FMRQAutoSegmentCore::GetBytesPerPixelForOutputType for why this is a guess.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
+	static int32 GetBytesPerPixelForOutputType(TSubclassOf<UMovieGraphFileOutputNode> OutputType, FString& OutReason);
 
 	/**
 	 * Writes one Movie Render Queue job per segment.

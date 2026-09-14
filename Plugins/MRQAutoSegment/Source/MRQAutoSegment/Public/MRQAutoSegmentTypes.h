@@ -153,6 +153,14 @@ struct FMRQSegmentRequest
 	int32 BytesPerPixel = 4;
 
 	/**
+	 * When true the panel keeps BytesPerPixel in sync with the selected output format, and
+	 * BytesPerPixel above is treated as derived rather than authored. Turn it off to set the
+	 * value by hand.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output")
+	bool bAutoBytesPerPixel = true;
+
+	/**
 	 * Estimated per-frame growth in RAM, as a fraction of one frame buffer.
 	 *
 	 * The mechanism this models: rendered frames queue up in the image-write / encoder pipeline

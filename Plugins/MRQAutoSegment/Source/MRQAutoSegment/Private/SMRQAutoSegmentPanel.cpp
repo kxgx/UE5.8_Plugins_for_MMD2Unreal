@@ -13,12 +13,14 @@
 #include "MovieScene.h"
 #include "MoviePipelineQueue.h"
 #include "Graph/Nodes/MovieGraphFileOutputNode.h"
+#include "Graph/MovieGraphProjectSettings.h"
 #include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectHash.h"
 
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SNumericEntryBox.h"
@@ -48,6 +50,8 @@ void SMRQAutoSegmentPanel::Construct(const FArguments& InArgs)
 
 	RefreshSequenceList();
 	RefreshOutputTypes();
+	RefreshResolutionPresets();
+	UpdateAutoBytesPerPixel();
 
 	ChildSlot
 	[
@@ -262,6 +266,9 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 				.OnSelectionChanged_Lambda([this](TSharedPtr<FMRQOutputTypeOption> Item, ESelectInfo::Type)
 				{
 					SelectedOutputType = Item;
+					// The pixel format follows the output format, so the frame buffer estimate does too.
+					UpdateAutoBytesPerPixel();
+					RebuildPlan();
 				})
 				[
 					SNew(STextBlock).Text_Lambda([this]()
@@ -282,10 +289,45 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 
 				+ SHorizontalBox::Slot().AutoWidth()
 				[
+					SNew(SComboBox<TSharedPtr<FMRQResolutionOption>>)
+					.OptionsSource(&ResolutionOptions)
+					.InitiallySelectedItem(SelectedResolution)
+					.OnGenerateWidget_Lambda([](TSharedPtr<FMRQResolutionOption> Item)
+					{
+						return SNew(STextBlock).Text(Item.IsValid()
+							? FText::FromString(Item->Label)
+							: FText::GetEmpty());
+					})
+					.OnSelectionChanged_Lambda([this](TSharedPtr<FMRQResolutionOption> Item, ESelectInfo::Type)
+					{
+						if (!Item.IsValid())
+						{
+							return;
+						}
+						SelectedResolution = Item;
+						if (!Item->bIsCustom)
+						{
+							Request.Resolution = Item->Resolution;
+						}
+						RebuildPlan();
+					})
+					[
+						SNew(STextBlock).Text_Lambda([this]()
+						{
+							return SelectedResolution.IsValid()
+								? FText::FromString(SelectedResolution->Label)
+								: LOCTEXT("ResolutionCustom", "自定义");
+						})
+					]
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				[
 					SNew(SNumericEntryBox<int32>)
 					.AllowSpin(false)
 					.MinValue(1)
 					.MinDesiredValueWidth(72.0f)
+					.IsEnabled_Lambda([this]() { return !SelectedResolution.IsValid() || SelectedResolution->bIsCustom; })
 					.Value_Lambda([this]() { return TOptional<int32>(Request.Resolution.X); })
 					.OnValueChanged_Lambda([this](int32 NewValue) { Request.Resolution.X = NewValue; RebuildPlan(); })
 				]
@@ -301,23 +343,54 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 					.AllowSpin(false)
 					.MinValue(1)
 					.MinDesiredValueWidth(72.0f)
+					.IsEnabled_Lambda([this]() { return !SelectedResolution.IsValid() || SelectedResolution->bIsCustom; })
 					.Value_Lambda([this]() { return TOptional<int32>(Request.Resolution.Y); })
 					.OnValueChanged_Lambda([this](int32 NewValue) { Request.Resolution.Y = NewValue; RebuildPlan(); })
-				]
+				])
+		]
 
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12.0f, 0.0f, 4.0f, 0.0f)
+		// --- bytes per pixel ----------------------------------------------------
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			MakeRow(LOCTEXT("LabelBytesPerPixel", "每像素字节"),
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
-					SNew(STextBlock).Text(LOCTEXT("LabelBytesPerPixel", "每像素字节"))
+					SNew(SCheckBox)
+					.IsChecked_Lambda([this]()
+					{
+						return Request.bAutoBytesPerPixel ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+					})
+					.OnCheckStateChanged_Lambda([this](ECheckBoxState NewState)
+					{
+						Request.bAutoBytesPerPixel = (NewState == ECheckBoxState::Checked);
+						UpdateAutoBytesPerPixel();
+						RebuildPlan();
+					})
+					[
+						SNew(STextBlock).Text(LOCTEXT("AutoBytesPerPixel", "跟随输出格式"))
+					]
 				]
 
-				+ SHorizontalBox::Slot().AutoWidth()
+				+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 8.0f, 0.0f)
 				[
 					SNew(SNumericEntryBox<int32>)
 					.AllowSpin(false)
 					.MinValue(1)
 					.MinDesiredValueWidth(48.0f)
+					.IsEnabled_Lambda([this]() { return !Request.bAutoBytesPerPixel; })
 					.Value_Lambda([this]() { return TOptional<int32>(Request.BytesPerPixel); })
 					.OnValueChanged_Lambda([this](int32 NewValue) { Request.BytesPerPixel = NewValue; RebuildPlan(); })
+				]
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					.AutoWrapText(true)
+					.Text_Lambda([this]() { return FText::FromString(BytesPerPixelReason); })
 				])
 		]
 
@@ -675,6 +748,63 @@ void SMRQAutoSegmentPanel::RefreshOutputTypes()
 		}
 		return A->Label < B->Label;
 	});
+}
+
+void SMRQAutoSegmentPanel::RefreshResolutionPresets()
+{
+	ResolutionOptions.Reset();
+
+	// The same list the Movie Graph's own output setting nodes offer, straight from project settings.
+	if (const UMovieGraphProjectSettings* Settings = GetDefault<UMovieGraphProjectSettings>())
+	{
+		for (const FMovieGraphNamedResolution& Preset : Settings->DefaultNamedResolutions)
+		{
+			if (!Preset.IsValid())
+			{
+				continue;
+			}
+
+			TSharedPtr<FMRQResolutionOption> Option = MakeShared<FMRQResolutionOption>();
+			Option->ProfileName = Preset.ProfileName;
+			Option->Resolution = Preset.Resolution;
+			Option->Label = FString::Printf(TEXT("%s  (%d × %d)"),
+				*Preset.ProfileName.ToString(), Preset.Resolution.X, Preset.Resolution.Y);
+			ResolutionOptions.Add(Option);
+		}
+	}
+
+	// "Custom" is always last, and is what the width/height boxes are enabled by.
+	{
+		TSharedPtr<FMRQResolutionOption> Option = MakeShared<FMRQResolutionOption>();
+		Option->ProfileName = FMovieGraphNamedResolution::CustomEntryName;
+		Option->Resolution = Request.Resolution;
+		Option->Label = TEXT("自定义");
+		Option->bIsCustom = true;
+		ResolutionOptions.Add(Option);
+	}
+
+	// Preselect whichever preset already matches the current resolution; otherwise stay custom.
+	SelectedResolution = ResolutionOptions.Last();
+	for (const TSharedPtr<FMRQResolutionOption>& Option : ResolutionOptions)
+	{
+		if (!Option->bIsCustom && Option->Resolution == Request.Resolution)
+		{
+			SelectedResolution = Option;
+			break;
+		}
+	}
+}
+
+void SMRQAutoSegmentPanel::UpdateAutoBytesPerPixel()
+{
+	const UClass* OutputType = SelectedOutputType.IsValid() ? SelectedOutputType->Class : nullptr;
+	const int32 Derived = FMRQAutoSegmentCore::GetBytesPerPixelForOutputType(OutputType, BytesPerPixelReason);
+
+	// Always recompute the explanation, but only overwrite the value when the user let us.
+	if (Request.bAutoBytesPerPixel)
+	{
+		Request.BytesPerPixel = Derived;
+	}
 }
 
 void SMRQAutoSegmentPanel::ProbeAndPlan()

@@ -45,6 +45,54 @@ FString FMRQAutoSegmentCore::FormatBytes(int64 InBytes)
 	return FString::Printf(TEXT("%.2f %s"), Value, Units[UnitIndex]);
 }
 
+int32 FMRQAutoSegmentCore::GetBytesPerPixelForOutputType(const UClass* InOutputType, FString& OutReason)
+{
+	if (InOutputType == nullptr)
+	{
+		OutReason = TEXT("没选输出格式，按 8-bit RGBA 估");
+		return 4;
+	}
+
+	const FString ClassName = InOutputType->GetName();
+
+	// --- 16 bits per channel: 4 channels x 2 bytes ------------------------------------------
+	if (ClassName.Contains(TEXT("HEVC10")))
+	{
+		OutReason = TEXT("HEVC 10-bit 按半精度 RGBA 走管线，每通道 2 字节");
+		return 8;
+	}
+	if (ClassName.Contains(TEXT("EXR")))
+	{
+		OutReason = TEXT("EXR 默认半精度 RGBA，每通道 2 字节");
+		return 8;
+	}
+
+	// --- 8 bits per channel: 4 channels x 1 byte --------------------------------------------
+	if (ClassName.Contains(TEXT("MP4")) || ClassName.Contains(TEXT("CommandLineEncoder")))
+	{
+		OutReason = TEXT("MP4 / 命令行编码器按 8-bit RGBA 走管线，每通道 1 字节");
+		return 4;
+	}
+	if (ClassName.Contains(TEXT("PNG")) || ClassName.Contains(TEXT("TGA")))
+	{
+		OutReason = TEXT("PNG / TGA 为 8-bit RGBA，每通道 1 字节");
+		return 4;
+	}
+	if (ClassName.Contains(TEXT("JPG")) || ClassName.Contains(TEXT("JPEG")))
+	{
+		OutReason = TEXT("JPEG 没有 alpha，按 8-bit RGB 算");
+		return 3;
+	}
+	if (ClassName.Contains(TEXT("BMP")))
+	{
+		OutReason = TEXT("BMP 为 8-bit，每通道 1 字节");
+		return 3;
+	}
+
+	OutReason = FString::Printf(TEXT("认不出 '%s' 的像素格式，按 8-bit RGBA 估"), *ClassName);
+	return 4;
+}
+
 FMRQHardwareBudget FMRQAutoSegmentCore::ProbeHardware()
 {
 	FMRQHardwareBudget Budget;

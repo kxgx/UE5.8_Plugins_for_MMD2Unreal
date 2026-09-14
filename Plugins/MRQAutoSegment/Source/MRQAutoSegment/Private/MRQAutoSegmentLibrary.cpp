@@ -25,6 +25,11 @@ FMRQSegmentPlan UMRQAutoSegmentLibrary::PlanFromHardware(const FMRQSegmentReques
 	return FMRQAutoSegmentCore::BuildPlan(Request, Budget);
 }
 
+int32 UMRQAutoSegmentLibrary::GetBytesPerPixelForOutputType(TSubclassOf<UMovieGraphFileOutputNode> OutputType, FString& OutReason)
+{
+	return FMRQAutoSegmentCore::GetBytesPerPixelForOutputType(OutputType.Get(), OutReason);
+}
+
 int32 UMRQAutoSegmentLibrary::GenerateJobs(
 	UMoviePipelineQueue* Queue,
 	ULevelSequence* Sequence,

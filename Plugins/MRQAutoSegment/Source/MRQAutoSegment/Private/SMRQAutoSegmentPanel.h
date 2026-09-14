@@ -20,6 +20,15 @@ struct FMRQOutputTypeOption
 	FString Label;
 };
 
+/** One selectable output resolution: a project preset, or the custom entry. */
+struct FMRQResolutionOption
+{
+	FName ProfileName;
+	FIntPoint Resolution = FIntPoint(1920, 1080);
+	FString Label;
+	bool bIsCustom = false;
+};
+
 /**
  * The MRQ Auto Segment panel.
  *
@@ -62,6 +71,12 @@ private:
 	TArray<TSharedPtr<FMRQOutputTypeOption>> OutputTypeOptions;
 	TSharedPtr<FMRQOutputTypeOption> SelectedOutputType;
 
+	TArray<TSharedPtr<FMRQResolutionOption>> ResolutionOptions;
+	TSharedPtr<FMRQResolutionOption> SelectedResolution;
+
+	/** Why the current bytes-per-pixel number is what it is. Shown next to the field. */
+	FString BytesPerPixelReason;
+
 	TSharedPtr<SVerticalBox> ConstraintBox;
 	TSharedPtr<SVerticalBox> SegmentBox;
 	TSharedPtr<STextBlock> SummaryBlock;
@@ -71,6 +86,11 @@ private:
 
 	void RefreshSequenceList();
 	void RefreshOutputTypes();
+	void RefreshResolutionPresets();
+
+	/** Recomputes the derived bytes-per-pixel for the selected output format. */
+	void UpdateAutoBytesPerPixel();
+
 	void ProbeAndPlan();
 	void RebuildPlan();
 	void RebuildConstraintRows();
