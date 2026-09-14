@@ -74,6 +74,11 @@ private:
 	TArray<TSharedPtr<FMRQResolutionOption>> ResolutionOptions;
 	TSharedPtr<FMRQResolutionOption> SelectedResolution;
 
+	FString PresetName;
+	TArray<TSharedPtr<FString>> PresetOptions;
+	TSharedPtr<FString> SelectedPreset;
+	TSharedPtr<SComboBox<TSharedPtr<FString>>> PresetCombo;
+
 	/** Why the current bytes-per-pixel number is what it is. Shown next to the field. */
 	FString BytesPerPixelReason;
 
@@ -87,6 +92,14 @@ private:
 	void RefreshSequenceList();
 	void RefreshOutputTypes();
 	void RefreshResolutionPresets();
+	void RefreshPresetList();
+
+	/** Reads the panel into a preset, and writes a preset back into the panel. */
+	void CapturePreset(FMRQSegmentPreset& OutPreset) const;
+	void ApplyPreset(const FMRQSegmentPreset& InPreset);
+
+	/** Where presets live. Created on demand. */
+	static FString GetPresetDirectory();
 
 	/** Recomputes the derived bytes-per-pixel for the selected output format. */
 	void UpdateAutoBytesPerPixel();
@@ -101,6 +114,8 @@ private:
 	FReply HandleGenerateClicked();
 	FReply HandleClearClicked();
 	FReply HandleRangeFromSequenceClicked();
+	FReply HandleSavePresetClicked();
+	FReply HandleLoadPresetClicked();
 
 	// ---------------------------------------------------------------- helpers
 

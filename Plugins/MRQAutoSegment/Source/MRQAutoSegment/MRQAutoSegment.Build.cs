@@ -35,6 +35,10 @@ public class MRQAutoSegment : ModuleRules
 			"InputCore",
 			// IAssetRegistry, used to populate the sequence picker
 			"AssetRegistry",
+			// FJsonObjectConverter, for the save/load preset files
+			"JsonUtilities",
+			// FJsonValue / FJsonSerializer / LogJson - the converter's templates instantiate here
+			"Json",
 			"Projects",
 			// WorkspaceMenu::GetMenuStructure(), to place the panel tab under Tools
 			"WorkspaceMenuStructure",

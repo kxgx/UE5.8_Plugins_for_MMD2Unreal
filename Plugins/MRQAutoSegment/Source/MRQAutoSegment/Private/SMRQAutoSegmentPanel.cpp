@@ -15,6 +15,9 @@
 #include "MoviePipelineQueue.h"
 #include "Graph/Nodes/MovieGraphFileOutputNode.h"
 #include "Graph/MovieGraphProjectSettings.h"
+#include "HAL/FileManager.h"
+#include "JsonObjectConverter.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Styling/CoreStyle.h"
 #include "UObject/Package.h"
@@ -52,6 +55,7 @@ void SMRQAutoSegmentPanel::Construct(const FArguments& InArgs)
 	RefreshSequenceList();
 	RefreshOutputTypes();
 	RefreshResolutionPresets();
+	RefreshPresetList();
 	UpdateAutoBytesPerPixel();
 
 	ChildSlot
@@ -590,6 +594,68 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
 					.Text(LOCTEXT("UseLimitHint", "只占用空闲容量的一部分，其余留给系统和其他程序"))
 				])
+		]
+
+		// --- presets ------------------------------------------------------------
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			MakeRow(LOCTEXT("LabelPreset", "预设"),
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+				[
+					SNew(SEditableTextBox)
+					.HintText(LOCTEXT("PresetNameHint", "预设名称"))
+					.Text_Lambda([this]() { return FText::FromString(PresetName); })
+					.OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type)
+					{
+						PresetName = NewText.ToString();
+					})
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 12.0f, 0.0f)
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("SavePreset", "保存预设"))
+					.ToolTipText(LOCTEXT("SavePresetTip", "把当前整份配置（序列、输出、分辨率、帧范围、分段方式、使用上限）存成一个预设"))
+					.OnClicked(this, &SMRQAutoSegmentPanel::HandleSavePresetClicked)
+				]
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+				[
+					SAssignNew(PresetCombo, SComboBox<TSharedPtr<FString>>)
+					.OptionsSource(&PresetOptions)
+					.InitiallySelectedItem(SelectedPreset)
+					.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item)
+					{
+						return SNew(STextBlock).Text(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty());
+					})
+					.OnSelectionChanged_Lambda([this](TSharedPtr<FString> Item, ESelectInfo::Type)
+					{
+						SelectedPreset = Item;
+						if (Item.IsValid())
+						{
+							PresetName = *Item;
+						}
+					})
+					[
+						SNew(STextBlock).Text_Lambda([this]()
+						{
+							return SelectedPreset.IsValid()
+								? FText::FromString(*SelectedPreset)
+								: LOCTEXT("NoPreset", "选择预设...");
+						})
+					]
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("LoadPreset", "加载预设"))
+					.ToolTipText(LOCTEXT("LoadPresetTip", "用选中的预设覆盖当前配置"))
+					.OnClicked(this, &SMRQAutoSegmentPanel::HandleLoadPresetClicked)
+				])
 		];
 }
 
@@ -685,6 +751,10 @@ FText SMRQAutoSegmentPanel::GetModeLabel(EMRQSegmentMode Mode) const
 
 void SMRQAutoSegmentPanel::RefreshSequenceList()
 {
+	// Remember the current target first. Rescanning is about hardware, and silently moving the
+	// selection to whatever happens to sort first would throw away the user's configuration.
+	const FString PreviouslySelected = GetSelectedSequencePath();
+
 	SequenceAssets.Reset();
 	SelectedSequence = nullptr;
 
@@ -704,9 +774,26 @@ void SMRQAutoSegmentPanel::RefreshSequenceList()
 		SequenceAssets.Add(MakeShared<FAssetData>(Asset));
 	}
 
-	if (SequenceAssets.Num() > 0)
+	// Put the previous selection back when it is still around.
+	for (const TSharedPtr<FAssetData>& Asset : SequenceAssets)
+	{
+		if (Asset.IsValid() && Asset->GetObjectPathString() == PreviouslySelected)
+		{
+			SelectedSequence = Asset;
+			break;
+		}
+	}
+
+	// Only pick a default on a genuinely cold start, never as a side effect of a rescan.
+	if (!SelectedSequence.IsValid() && PreviouslySelected.IsEmpty() && SequenceAssets.Num() > 0)
 	{
 		SelectedSequence = SequenceAssets[0];
+	}
+
+	if (SequenceCombo.IsValid())
+	{
+		SequenceCombo->RefreshOptions();
+		SequenceCombo->SetSelectedItem(SelectedSequence);
 	}
 }
 
@@ -806,6 +893,204 @@ void SMRQAutoSegmentPanel::UpdateAutoBytesPerPixel()
 	{
 		Request.BytesPerPixel = Derived;
 	}
+}
+
+FString SMRQAutoSegmentPanel::GetPresetDirectory()
+{
+	// Saved/ rather than Config/, so presets never end up committed by accident. Copy the folder
+	// between machines if they should travel.
+	return FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("MRQAutoSegment"), TEXT("Presets")));
+}
+
+void SMRQAutoSegmentPanel::RefreshPresetList()
+{
+	const FString PreviouslySelected = SelectedPreset.IsValid() ? *SelectedPreset : FString();
+
+	PresetOptions.Reset();
+	SelectedPreset = nullptr;
+
+	const FString Directory = GetPresetDirectory();
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *FPaths::Combine(Directory, TEXT("*.json")), /*Files=*/true, /*Directories=*/false);
+	Files.Sort([](const FString& A, const FString& B) { return A < B; });
+
+	for (const FString& File : Files)
+	{
+		PresetOptions.Add(MakeShared<FString>(FPaths::GetBaseFilename(File)));
+	}
+
+	for (const TSharedPtr<FString>& Option : PresetOptions)
+	{
+		if (Option.IsValid() && *Option == PreviouslySelected)
+		{
+			SelectedPreset = Option;
+			break;
+		}
+	}
+
+	if (PresetCombo.IsValid())
+	{
+		PresetCombo->RefreshOptions();
+		PresetCombo->SetSelectedItem(SelectedPreset);
+	}
+}
+
+void SMRQAutoSegmentPanel::CapturePreset(FMRQSegmentPreset& OutPreset) const
+{
+	OutPreset.Name = PresetName;
+	OutPreset.SequencePath = GetSelectedSequencePath();
+	OutPreset.OutputDirectory = OutputDirectory;
+	OutPreset.FileNameFormat = FileNameFormat;
+	OutPreset.OutputTypeClass = (SelectedOutputType.IsValid() && SelectedOutputType->Class != nullptr)
+		? SelectedOutputType->Class->GetPathName()
+		: FString();
+	OutPreset.ResolutionProfile = SelectedResolution.IsValid()
+		? SelectedResolution->ProfileName.ToString()
+		: FString();
+	OutPreset.Request = Request;
+}
+
+void SMRQAutoSegmentPanel::ApplyPreset(const FMRQSegmentPreset& InPreset)
+{
+	OutputDirectory = InPreset.OutputDirectory;
+	FileNameFormat = InPreset.FileNameFormat;
+	Request = InPreset.Request;
+
+	// Output format. An empty class path means the preset was saved on the "(default)" entry.
+	SelectedOutputType = nullptr;
+	for (const TSharedPtr<FMRQOutputTypeOption>& Option : OutputTypeOptions)
+	{
+		if (Option.IsValid() && Option->Class != nullptr
+			&& Option->Class->GetPathName() == InPreset.OutputTypeClass)
+		{
+			SelectedOutputType = Option;
+			break;
+		}
+	}
+	if (!SelectedOutputType.IsValid() && OutputTypeOptions.Num() > 0)
+	{
+		SelectedOutputType = OutputTypeOptions[0];
+	}
+	UpdateAutoBytesPerPixel();
+
+	// Sequence.
+	SelectedSequence = nullptr;
+	for (const TSharedPtr<FAssetData>& Asset : SequenceAssets)
+	{
+		if (Asset.IsValid() && Asset->GetObjectPathString() == InPreset.SequencePath)
+		{
+			SelectedSequence = Asset;
+			break;
+		}
+	}
+	if (SequenceCombo.IsValid())
+	{
+		SequenceCombo->SetSelectedItem(SelectedSequence);
+	}
+
+	// Resolution preset. A profile we no longer know about leaves the plain resolution from
+	// Request in place, which is the right fallback.
+	SelectedResolution = nullptr;
+	for (const TSharedPtr<FMRQResolutionOption>& Option : ResolutionOptions)
+	{
+		if (Option.IsValid() && Option->ProfileName.ToString() == InPreset.ResolutionProfile)
+		{
+			SelectedResolution = Option;
+			break;
+		}
+	}
+
+	RebuildPlan();
+}
+
+FReply SMRQAutoSegmentPanel::HandleSavePresetClicked()
+{
+	FMRQSegmentPreset Preset;
+	CapturePreset(Preset);
+
+	// A nameless save still has to produce something findable.
+	if (Preset.Name.IsEmpty())
+	{
+		Preset.Name = GetSelectedSequenceName();
+	}
+	Preset.Name = FPaths::MakeValidFileName(Preset.Name, TEXT('_'));
+	PresetName = Preset.Name;
+
+	const FString Directory = GetPresetDirectory();
+	IFileManager::Get().MakeDirectory(*Directory, /*Tree=*/true);
+
+	const FString FilePath = FPaths::Combine(Directory, Preset.Name + TEXT(".json"));
+
+	FString Json;
+	if (!FJsonObjectConverter::UStructToJsonObjectString(Preset, Json))
+	{
+		if (StatusBlock.IsValid())
+		{
+			StatusBlock->SetText(LOCTEXT("PresetSerializeFailed", "预设序列化失败。"));
+		}
+		return FReply::Handled();
+	}
+
+	if (!FFileHelper::SaveStringToFile(Json, *FilePath))
+	{
+		if (StatusBlock.IsValid())
+		{
+			StatusBlock->SetText(FText::FromString(FString::Printf(TEXT("写文件失败：%s"), *FilePath)));
+		}
+		return FReply::Handled();
+	}
+
+	RefreshPresetList();
+	if (StatusBlock.IsValid())
+	{
+		StatusBlock->SetText(FText::FromString(FString::Printf(
+			TEXT("已保存预设「%s」→ %s"), *Preset.Name, *FilePath)));
+	}
+	return FReply::Handled();
+}
+
+FReply SMRQAutoSegmentPanel::HandleLoadPresetClicked()
+{
+	if (!SelectedPreset.IsValid())
+	{
+		if (StatusBlock.IsValid())
+		{
+			StatusBlock->SetText(LOCTEXT("NoPresetChosen", "请先在下拉里选一个预设。"));
+		}
+		return FReply::Handled();
+	}
+
+	const FString FilePath = FPaths::Combine(GetPresetDirectory(), (*SelectedPreset) + TEXT(".json"));
+
+	FString Json;
+	if (!FFileHelper::LoadFileToString(Json, *FilePath))
+	{
+		if (StatusBlock.IsValid())
+		{
+			StatusBlock->SetText(FText::FromString(FString::Printf(TEXT("读不到预设文件：%s"), *FilePath)));
+		}
+		return FReply::Handled();
+	}
+
+	FMRQSegmentPreset Preset;
+	if (!FJsonObjectConverter::JsonObjectStringToUStruct(Json, &Preset))
+	{
+		if (StatusBlock.IsValid())
+		{
+			StatusBlock->SetText(FText::FromString(FString::Printf(TEXT("预设解析失败：%s"), *FilePath)));
+		}
+		return FReply::Handled();
+	}
+
+	PresetName = Preset.Name;
+	ApplyPreset(Preset);
+
+	if (StatusBlock.IsValid())
+	{
+		StatusBlock->SetText(FText::FromString(FString::Printf(TEXT("已加载预设「%s」。"), *PresetName)));
+	}
+	return FReply::Handled();
 }
 
 void SMRQAutoSegmentPanel::ProbeAndPlan()

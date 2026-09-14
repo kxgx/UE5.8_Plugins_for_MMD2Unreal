@@ -224,3 +224,43 @@ struct FMRQSegmentPlan
 	UPROPERTY(BlueprintReadOnly, Category = "Plan")
 	TArray<FMRQSegmentConstraint> Constraints;
 };
+
+/**
+ * Everything the panel can be configured with, in a form that serialises straight to JSON.
+ *
+ * Lives here rather than in the panel's own header because a USTRUCT needs a header that UHT
+ * actually processes, and the panel header is private and has no generated code.
+ *
+ * One file per preset under Saved/MRQAutoSegment/Presets, so a preset can be moved between
+ * machines or put in version control if wanted.
+ */
+USTRUCT(BlueprintType)
+struct FMRQSegmentPreset
+{
+	GENERATED_BODY()
+
+	/** Bare name; also the file name on disk. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	FString Name;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	FString SequencePath;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	FString OutputDirectory;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	FString FileNameFormat;
+
+	/** Class path of the chosen output node. Empty means "leave it to the graph". */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	FString OutputTypeClass;
+
+	/** Profile name of the chosen resolution preset, or the custom entry's name. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	FString ResolutionProfile;
+
+	/** Range, mode, limits and pixel format - everything the planner reads. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	FMRQSegmentRequest Request;
+};
