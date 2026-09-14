@@ -45,7 +45,10 @@ namespace
 
 void SMRQAutoSegmentPanel::Construct(const FArguments& InArgs)
 {
-	OutputDirectory = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("MovieRenders"));
+	// The engine's own default, written the way the engine writes it: project relative, with the
+	// {project_dir} token resolved at render time. Resolving it to an absolute path here would bake
+	// this machine's project location into every preset that gets saved.
+	OutputDirectory = TEXT("{project_dir}/Saved/MovieRenders");
 
 	ModeOptions.Add(MakeShared<EMRQSegmentMode>(EMRQSegmentMode::Auto));
 	ModeOptions.Add(MakeShared<EMRQSegmentMode>(EMRQSegmentMode::FixedCount));
@@ -227,8 +230,17 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 				.OnTextCommitted_Lambda([this](const FText& NewText, ETextCommit::Type)
 				{
 					OutputDirectory = NewText.ToString();
-					ProbeAndPlan();
 				}))
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			MakeRow(FText::GetEmpty(),
+				SNew(STextBlock)
+				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+				.AutoWrapText(true)
+				.Text(LOCTEXT("OutputDirHint", "支持 {project_dir} 等 token，渲染时由引擎展开——默认值就是引擎自己的默认，只是写成项目相对形式，换机器不用改")))
 		]
 
 		// --- file name format ---------------------------------------------------
