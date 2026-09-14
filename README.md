@@ -170,8 +170,9 @@ AnimSequence.AssetUserData 中存在类名为 "MMDVmdAssetUserData" 的条目
 
 ### 用法
 
-关卡编辑器工具栏的 **「MRQ 分段」** 按钮，或菜单 **工具 → MRQ 分段**，或控制台
-`MRQAutoSegment.Open`。调好参数后点「生成渲染队列」。
+直接在 **Sequencer 工具栏**点 **「MRQ 分段」**（最省事：面板会自动选中你正在编辑的序列，
+并把帧范围填成它的播放范围）。也可以用关卡编辑器工具栏的按钮、菜单 **工具 → MRQ 分段**，
+或控制台 `MRQAutoSegment.Open`。调好参数后点「生成渲染队列」。
 
 文件名：帧范围自动追加在你的格式串末尾——
 `{sequence_name}` → `{sequence_name}_0000-0733`、`{sequence_name}_0734-1467` …

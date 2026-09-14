@@ -97,8 +97,11 @@ YourProject/
 
 ## 用法
 
-打开面板的三种方式:
+打开面板的四种方式:
 
+- **Sequencer 工具栏上的「MRQ 分段」按钮** —— 最直接,它就在你正在编辑的序列旁边。
+  点开后面板会自动选中**这个 Sequencer 里打开的序列**,并把帧范围填成它的播放范围,
+  通常只要再选个输出格式就能直接生成。同时开多个 Sequencer 时,每个按钮对应自己那一个。
 - 关卡编辑器工具栏上的 **「MRQ 分段」** 按钮
 - 顶部菜单 **工具 → MRQ 分段**
 - 控制台 `MRQAutoSegment.Open`
@@ -182,6 +185,17 @@ Movie Graph 管线,但配置是按任务给的。
 图里把属性提升成变量。两条路都不好,所以没走。
 
 代价见「已知边界」第 3 条。
+
+### Sequencer 按钮怎么知道是哪个 Sequencer
+
+Sequencer 构建工具栏时会往 `FToolMenuContext` 里放一个 `USequencerToolMenuContext`,
+其中是 `WeakSequencer`。插件的按钮就从这里取 —— 所以同时开多个 Sequencer 时,每个按钮
+对应自己那一个,不需要去猜"当前活跃的是哪个"。
+
+工具栏本身走 `UToolMenus::ExtendMenu("Sequencer.MainToolBar")`。`ExtendMenu` 对**尚未注册**
+的菜单会自动建一个,而 Sequencer 之后调用 `RegisterMenu` 时会**复用同一个菜单对象**并只改
+`MenuType`,已有的 section 全部保留 —— 所以插件在 `PostEngineInit` 阶段注册是安全的,
+不必等 Sequencer 先出现。
 
 ---
 

@@ -184,7 +184,7 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 		.AutoHeight()
 		[
 			MakeRow(LOCTEXT("LabelSequence", "关卡序列"),
-				SNew(SComboBox<TSharedPtr<FAssetData>>)
+				SAssignNew(SequenceCombo, SComboBox<TSharedPtr<FAssetData>>)
 				.OptionsSource(&SequenceAssets)
 				.InitiallySelectedItem(SelectedSequence)
 				.OnGenerateWidget_Lambda([](TSharedPtr<FAssetData> Item)
@@ -825,6 +825,61 @@ FReply SMRQAutoSegmentPanel::HandleProbeClicked()
 	return FReply::Handled();
 }
 
+void SMRQAutoSegmentPanel::ApplyRangeFromSequence(ULevelSequence* InSequence)
+{
+	if (InSequence == nullptr || InSequence->GetMovieScene() == nullptr)
+	{
+		return;
+	}
+
+	const UMovieScene* MovieScene = InSequence->GetMovieScene();
+	const TRange<FFrameNumber> PlaybackRange = MovieScene->GetPlaybackRange();
+
+	Request.RangeStart = FFrameRate::TransformTime(
+		FFrameTime(PlaybackRange.GetLowerBoundValue()), MovieScene->GetTickResolution(), MovieScene->GetDisplayRate())
+		.FloorToFrame().Value;
+	Request.RangeEnd = FFrameRate::TransformTime(
+		FFrameTime(PlaybackRange.GetUpperBoundValue()), MovieScene->GetTickResolution(), MovieScene->GetDisplayRate())
+		.FloorToFrame().Value;
+}
+
+void SMRQAutoSegmentPanel::AdoptSequence(UMovieSceneSequence* InSequence)
+{
+	ULevelSequence* LevelSequence = Cast<ULevelSequence>(InSequence);
+	if (LevelSequence == nullptr)
+	{
+		return;
+	}
+
+	// Select it in the picker when we know about it, so the panel and the Sequencer agree.
+	const FString ObjectPath = LevelSequence->GetPathName();
+	SelectedSequence = nullptr;
+	for (const TSharedPtr<FAssetData>& Candidate : SequenceAssets)
+	{
+		if (Candidate.IsValid() && Candidate->ToSoftObjectPath().ToString() == ObjectPath)
+		{
+			SelectedSequence = Candidate;
+			break;
+		}
+	}
+
+	if (SelectedSequence.IsValid() && SequenceCombo.IsValid())
+	{
+		SequenceCombo->SetSelectedItem(SelectedSequence);
+	}
+
+	// The frame range the user is actually looking at is the one they want segmented.
+	ApplyRangeFromSequence(LevelSequence);
+	RebuildPlan();
+
+	if (StatusBlock.IsValid())
+	{
+		StatusBlock->SetText(FText::FromString(FString::Printf(
+			TEXT("已从 Sequencer 取用序列「%s」，帧范围 %d → %d。"),
+			*LevelSequence->GetName(), Request.RangeStart, Request.RangeEnd)));
+	}
+}
+
 FReply SMRQAutoSegmentPanel::HandleRangeFromSequenceClicked()
 {
 	const FString SequencePath = GetSelectedSequencePath();
@@ -839,17 +894,7 @@ FReply SMRQAutoSegmentPanel::HandleRangeFromSequenceClicked()
 		return FReply::Handled();
 	}
 
-	const UMovieScene* MovieScene = Sequence->GetMovieScene();
-	const TRange<FFrameNumber> PlaybackRange = MovieScene->GetPlaybackRange();
-	const FFrameRate TickResolution = MovieScene->GetTickResolution();
-	const FFrameRate DisplayRate = MovieScene->GetDisplayRate();
-
-	const FFrameNumber StartTick = PlaybackRange.GetLowerBoundValue();
-	const FFrameNumber EndTick = PlaybackRange.GetUpperBoundValue();
-
-	Request.RangeStart = FFrameRate::TransformTime(FFrameTime(StartTick), TickResolution, DisplayRate).FloorToFrame().Value;
-	Request.RangeEnd = FFrameRate::TransformTime(FFrameTime(EndTick), TickResolution, DisplayRate).FloorToFrame().Value;
-
+	ApplyRangeFromSequence(Sequence);
 	RebuildPlan();
 
 	if (StatusBlock.IsValid())

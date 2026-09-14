@@ -8,6 +8,8 @@
 
 class STextBlock;
 class SVerticalBox;
+class ULevelSequence;
+class UMovieSceneSequence;
 struct FAssetData;
 template <typename OptionType> class SComboBox;
 
@@ -32,6 +34,13 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+
+	/**
+	 * Points the panel at a sequence: selects it in the picker and takes the frame range straight
+	 * from its playback range. Called by the Sequencer toolbar button, which passes whatever
+	 * sequence that Sequencer currently has open.
+	 */
+	void AdoptSequence(UMovieSceneSequence* InSequence);
 
 private:
 	// ---------------------------------------------------------------- state
@@ -66,6 +75,7 @@ private:
 	void RebuildPlan();
 	void RebuildConstraintRows();
 	void RebuildSegmentRows();
+	void ApplyRangeFromSequence(ULevelSequence* InSequence);
 
 	FReply HandleProbeClicked();
 	FReply HandleGenerateClicked();

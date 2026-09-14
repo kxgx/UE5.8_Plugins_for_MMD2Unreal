@@ -8,6 +8,9 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "HAL/IConsoleManager.h"
+#include "ISequencer.h"
+#include "MovieSceneSequence.h"
+#include "SequencerToolMenuContext.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -15,10 +18,16 @@
 
 #define LOCTEXT_NAMESPACE "MRQAutoSegment"
 
+DEFINE_LOG_CATEGORY_STATIC(LogMRQAutoSegment, Log, All);
+
 namespace
 {
 	const FName PanelTabName(TEXT("MRQAutoSegmentPanel"));
-	const FName ToolbarButtonName(TEXT("MRQAutoSegment.OpenPanel"));
+	const FName LevelEditorButtonName(TEXT("MRQAutoSegment.OpenPanel"));
+	const FName SequencerButtonName(TEXT("MRQAutoSegment.OpenFromSequencer"));
+	const FName SequencerSectionName(TEXT("MRQAutoSegment"));
+	const FName LevelEditorOwner(TEXT("MRQAutoSegmentLevelEditor"));
+	const FName SequencerOwner(TEXT("MRQAutoSegmentSequencer"));
 }
 
 void FMRQAutoSegmentModule::StartupModule()
@@ -31,6 +40,7 @@ void FMRQAutoSegmentModule::StartupModule()
 		.SetGroup(WorkspaceMenu::GetMenuStructure().GetToolsCategory());
 
 	RegisterMenus();
+	RegisterSequencerToolbar();
 	RegisterConsoleCommands();
 }
 
@@ -42,8 +52,8 @@ void FMRQAutoSegmentModule::ShutdownModule()
 
 	if (UToolMenus::IsToolMenuUIEnabled())
 	{
-		UToolMenus::UnRegisterStartupCallback(this);
-		UToolMenus::UnregisterOwner(this);
+		UToolMenus::Get()->UnregisterOwnerByName(LevelEditorOwner);
+		UToolMenus::Get()->UnregisterOwnerByName(SequencerOwner);
 	}
 }
 
@@ -53,7 +63,7 @@ void FMRQAutoSegmentModule::RegisterMenus()
 	UToolMenus::RegisterStartupCallback(
 		FSimpleMulticastDelegate::FDelegate::CreateLambda([this]()
 		{
-			FToolMenuOwnerScoped OwnerScoped(this);
+			FToolMenuOwnerScoped OwnerScoped(LevelEditorOwner);
 
 			UToolMenu* ToolbarMenu = UToolMenus::Get()->ExtendMenu(TEXT("LevelEditor.LevelEditorToolBar.PlayToolBar"));
 			if (ToolbarMenu == nullptr)
@@ -64,7 +74,7 @@ void FMRQAutoSegmentModule::RegisterMenus()
 			FToolMenuSection& Section = ToolbarMenu->FindOrAddSection("MRQAutoSegment");
 
 			FToolMenuEntry Entry = FToolMenuEntry::InitToolBarButton(
-				ToolbarButtonName,
+				LevelEditorButtonName,
 				FUIAction(FExecuteAction::CreateRaw(this, &FMRQAutoSegmentModule::OpenPanel)),
 				LOCTEXT("ToolbarLabel", "MRQ 分段"),
 				LOCTEXT("ToolbarTooltip", "根据内存 / 显存空闲容量，把长镜头切成多个渲染任务"),
@@ -73,6 +83,80 @@ void FMRQAutoSegmentModule::RegisterMenus()
 			Entry.SetCommandList(nullptr);
 			Section.AddEntry(Entry);
 		}));
+}
+
+void FMRQAutoSegmentModule::RegisterSequencerToolbar()
+{
+	if (!UToolMenus::IsToolMenuUIEnabled())
+	{
+		return;
+	}
+
+	FToolMenuOwnerScoped OwnerScoped(SequencerOwner);
+
+	// ExtendMenu creates the menu when the Sequencer has not registered it yet, and the Sequencer
+	// merges whatever is already there when it later builds its own toolbar.
+	UToolMenu* SequencerToolbar = UToolMenus::Get()->ExtendMenu(TEXT("Sequencer.MainToolBar"));
+	if (SequencerToolbar == nullptr)
+	{
+		return;
+	}
+
+	SequencerToolbar->AddDynamicSection(
+		TEXT("MRQAutoSegmentEntries"),
+		FNewToolMenuDelegate::CreateLambda([this](UToolMenu* InMenu)
+		{
+			if (InMenu == nullptr)
+			{
+				return;
+			}
+
+			// The Sequencer puts a USequencerToolMenuContext into its toolbar's menu context, and
+			// that is how this button knows exactly which Sequencer it was built for - no guessing
+			// about which of several open Sequencers the user meant.
+			USequencerToolMenuContext* SequencerContext = InMenu->Context.FindContext<USequencerToolMenuContext>();
+			const TWeakPtr<ISequencer> WeakSequencer = (SequencerContext != nullptr)
+				? SequencerContext->WeakSequencer
+				: TWeakPtr<ISequencer>();
+
+			FToolMenuSection& Section = InMenu->FindOrAddSection(
+				SequencerSectionName, LOCTEXT("SequencerSection", "MRQ"));
+
+			Section.AddEntry(FToolMenuEntry::InitToolBarButton(
+				SequencerButtonName,
+				FUIAction(FExecuteAction::CreateLambda([this, WeakSequencer]()
+				{
+					OpenPanelForSequencer(WeakSequencer);
+				})),
+				LOCTEXT("SequencerButtonLabel", "MRQ 分段"),
+				LOCTEXT("SequencerButtonTooltip", "按内存 / 显存空闲容量把这条序列切成多个渲染任务，输出文件名带帧范围"),
+				FSlateIcon()));
+		}),
+		FToolMenuInsert(NAME_None, EToolMenuInsertType::Last));
+
+	UE_LOG(LogMRQAutoSegment, Log,
+		TEXT("Sequencer toolbar: registered dynamic section '%s' on 'Sequencer.MainToolBar'."),
+		TEXT("MRQAutoSegmentEntries"));
+}
+
+void FMRQAutoSegmentModule::OpenPanelForSequencer(const TWeakPtr<ISequencer>& InSequencer)
+{
+	// Spawning the tab is synchronous, so PanelInstance is valid immediately afterwards.
+	OpenPanel();
+
+	TSharedPtr<SMRQAutoSegmentPanel> Panel = PanelInstance.Pin();
+	if (!Panel.IsValid())
+	{
+		return;
+	}
+
+	UMovieSceneSequence* Sequence = nullptr;
+	if (TSharedPtr<ISequencer> Sequencer = InSequencer.Pin())
+	{
+		Sequence = Sequencer->GetRootMovieSceneSequence();
+	}
+
+	Panel->AdoptSequence(Sequence);
 }
 
 void FMRQAutoSegmentModule::RegisterConsoleCommands()
@@ -147,10 +231,13 @@ void FMRQAutoSegmentModule::OpenPanel()
 
 TSharedRef<SDockTab> FMRQAutoSegmentModule::OnSpawnPanel(const FSpawnTabArgs& Args)
 {
+	TSharedRef<SMRQAutoSegmentPanel> Panel = SNew(SMRQAutoSegmentPanel);
+	PanelInstance = Panel;
+
 	return SNew(SDockTab)
 		.TabRole(ETabRole::NomadTab)
 		[
-			SNew(SMRQAutoSegmentPanel)
+			Panel
 		];
 }
 

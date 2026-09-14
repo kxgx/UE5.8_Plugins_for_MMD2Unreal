@@ -36,6 +36,8 @@ public class MRQAutoSegment : ModuleRules
 			"Projects",
 			// WorkspaceMenu::GetMenuStructure(), to place the panel tab under Tools
 			"WorkspaceMenuStructure",
+			// ISequencer + USequencerToolMenuContext, for the Sequencer toolbar button
+			"Sequencer",
 		});
 	}
 }
