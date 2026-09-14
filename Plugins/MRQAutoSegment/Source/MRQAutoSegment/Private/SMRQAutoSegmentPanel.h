@@ -79,6 +79,11 @@ private:
 	TSharedPtr<FString> SelectedPreset;
 	TSharedPtr<SComboBox<TSharedPtr<FString>>> PresetCombo;
 
+	/** Pinned sample counts for the generated jobs. See FMRQJobTemplate. */
+	bool bOverrideSampleCounts = true;
+	int32 SpatialSampleCount = 8;
+	int32 TemporalSampleCount = 1;
+
 	/** Why the current bytes-per-pixel number is what it is. Shown next to the field. */
 	FString BytesPerPixelReason;
 

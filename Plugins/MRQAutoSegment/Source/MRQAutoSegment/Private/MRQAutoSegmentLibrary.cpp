@@ -37,13 +37,19 @@ int32 UMRQAutoSegmentLibrary::GenerateJobs(
 	const FMRQSegmentPlan& Plan,
 	const FString& OutputDirectory,
 	const FString& FileNameFormat,
-	FIntPoint Resolution)
+	FIntPoint Resolution,
+	bool bSetSampleCounts,
+	int32 SpatialSampleCount,
+	int32 TemporalSampleCount)
 {
 	FMRQJobTemplate Template;
 	Template.OutputDirectory = OutputDirectory;
 	Template.FileNameFormat = FileNameFormat;
 	Template.Resolution = Resolution;
 	Template.JobNamePrefix = GetDefaultJobNamePrefix();
+	Template.bSetSampleCounts = bSetSampleCounts;
+	Template.SpatialSampleCount = FMath::Max(SpatialSampleCount, 1);
+	Template.TemporalSampleCount = FMath::Max(TemporalSampleCount, 1);
 
 	return FMRQAutoSegmentCore::GenerateJobs(Queue, Sequence, MapPath, Plan, Template);
 }

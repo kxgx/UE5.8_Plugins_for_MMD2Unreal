@@ -263,4 +263,16 @@ struct FMRQSegmentPreset
 	/** Range, mode, limits and pixel format - everything the planner reads. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
 	FMRQSegmentRequest Request;
+
+	/** Whether the generated jobs pin the sample counts instead of leaving them to the graph. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset")
+	bool bOverrideSampleCounts = true;
+
+	/** Anti-aliasing samples per output frame. 8 is a good quality/perf default. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset", meta = (ClampMin = 1))
+	int32 SpatialSampleCount = 8;
+
+	/** Sub-samples across time, for motion blur and temporal effects. Usually left at 1. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset", meta = (ClampMin = 1))
+	int32 TemporalSampleCount = 1;
 };

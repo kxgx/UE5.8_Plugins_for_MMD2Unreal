@@ -58,7 +58,10 @@ public:
 		const FMRQSegmentPlan& Plan,
 		const FString& OutputDirectory,
 		const FString& FileNameFormat,
-		FIntPoint Resolution);
+		FIntPoint Resolution,
+		bool bSetSampleCounts = false,
+		int32 SpatialSampleCount = 8,
+		int32 TemporalSampleCount = 1);
 
 	/** Removes jobs whose name starts with JobNamePrefix. @return Number removed. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
