@@ -11,6 +11,7 @@
 #include "ISequencer.h"
 #include "MovieSceneSequence.h"
 #include "SequencerToolMenuContext.h"
+#include "Styling/AppStyle.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -28,6 +29,18 @@ namespace
 	const FName SequencerSectionName(TEXT("MRQAutoSegment"));
 	const FName LevelEditorOwner(TEXT("MRQAutoSegmentLevelEditor"));
 	const FName SequencerOwner(TEXT("MRQAutoSegmentSequencer"));
+
+	/**
+	 * The same 20x20 cinematic brush Sequencer's own Render Movie button uses.
+	 *
+	 * A toolbar entry with no icon falls back to a placeholder plus its label text, which produces
+	 * a wide button that stands out badly beside Sequencer's icon-only ones. A real icon keeps the
+	 * entry icon-only and pushes the label down into the tooltip.
+	 */
+	FSlateIcon MakeToolbarIcon()
+	{
+		return FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.OpenCinematic");
+	}
 }
 
 void FMRQAutoSegmentModule::StartupModule()
@@ -77,8 +90,8 @@ void FMRQAutoSegmentModule::RegisterMenus()
 				LevelEditorButtonName,
 				FUIAction(FExecuteAction::CreateRaw(this, &FMRQAutoSegmentModule::OpenPanel)),
 				LOCTEXT("ToolbarLabel", "MRQ 分段"),
-				LOCTEXT("ToolbarTooltip", "根据内存 / 显存空闲容量，把长镜头切成多个渲染任务"),
-				FSlateIcon());
+				LOCTEXT("ToolbarTooltip", "MRQ 分段 — 根据内存 / 显存空闲容量，把长镜头切成多个渲染任务"),
+				MakeToolbarIcon());
 
 			Entry.SetCommandList(nullptr);
 			Section.AddEntry(Entry);
@@ -129,8 +142,8 @@ void FMRQAutoSegmentModule::RegisterSequencerToolbar()
 					OpenPanelForSequencer(WeakSequencer);
 				})),
 				LOCTEXT("SequencerButtonLabel", "MRQ 分段"),
-				LOCTEXT("SequencerButtonTooltip", "按内存 / 显存空闲容量把这条序列切成多个渲染任务，输出文件名带帧范围"),
-				FSlateIcon()));
+				LOCTEXT("SequencerButtonTooltip", "MRQ 分段 — 按内存 / 显存空闲容量把这条序列切成多个渲染任务，输出文件名带帧范围"),
+				MakeToolbarIcon()));
 		}),
 		FToolMenuInsert(NAME_None, EToolMenuInsertType::Last));
 
