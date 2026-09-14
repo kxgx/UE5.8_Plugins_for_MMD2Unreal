@@ -32,10 +32,11 @@ MRQ 16-bit 量化 → FFloat16Color (半精度 RGBA, 8B/px)
 |---|---|
 | `Encoder` | `NVENC`（GPU，快）或 `X265`（CPU，同码率画质更好但慢很多） |
 | `Quality` | 越低越好越大。NVENC 走 `-cq`，x265 走 `-crf`。**16 ≈ 近无损，19 高，23 中** |
-| `FfmpegPath` | 默认 `ffmpeg.exe`（查 PATH）。也可填绝对路径 |
+| `FFmpeg Path` | **留空即查 `PATH`**（正常安装这样就够）。自动找不到时点右边的 📁 选文件，或填绝对路径 |
 | `ExtraArguments` | 附加原始 ffmpeg 参数，一般留空 |
 
-参考本项目的现成例子：`/Game/HEVC10Test/HEVC10TestConfig`（320×180 测试图）。
+> `FFmpeg Path` 是 `FFilePath` 类型，所以细节面板里有**文件选择按钮**，不用凭记忆手打路径。
+> 留空是有意义的——它表示"自己去 `PATH` 上找 `ffmpeg.exe`"。
 
 ### 实测数据（RTX 4070 Ti SUPER）
 
@@ -62,25 +63,40 @@ ffmpeg -i "NewLevelSequence.beauty.mp4" -i "NewLevelSequence.wav" `
 
 ---
 
-## 重新编译
+## 🔧 重编插件（重要）
 
-本仓库是**纯源码**，跟着你的工程一起编译即可。
+**当前工程是纯蓝图工程，插件以预编译二进制形式加载。**
+这么做是**被迫的**：`MMD2Unreal` 是只发二进制、不带源码的插件（`Plugins/MMD2Unreal/Source/`
+里只有 `Build.cs`，没有实现代码）。一旦把工程变成 C++ 工程，UBT 就会把它当源码模块
+**重新编译成一个 48 KB 的空壳 DLL**，覆盖掉原本 446 KB / 3306 KB 的真货，导致插件初始化失败。
 
-```bash
-"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" ^
-    YourProjectEditor Win64 Development ^
-    -Project="C:\Path\To\YourProject.uproject" -WaitMutex
+原始二进制备份在 `C:\Users\26959\MMD2Unreal\Binaries\Win64\`。
+
+### 如果要改插件代码并重编
+
+```powershell
+# 1. 停用 MMD2Unreal 的 Source，避免被编成空壳
+Rename-Item "C:\UE5\MMD_test\Plugins\MMD2Unreal\Source" "Source.disabled"
+
+# 2. 恢复工程 C++ 骨架（见下）和插件源码
+Rename-Item "C:\UE5\MMD_test\Plugins\HEVC10Output\Source.disabled" "Source"
+
+# 3. 编译
+& "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" `
+    MMD_testEditor Win64 Development -Project="C:\UE5\MMD_test\MMD_test.uproject" -WaitMutex
+
+# 4. 还原：插件源码改名回去、恢复 MMD2Unreal 的 Source
+Rename-Item "C:\UE5\MMD_test\Plugins\HEVC10Output\Source" "Source.disabled"
+Rename-Item "C:\UE5\MMD_test\Plugins\MMD2Unreal\Source.disabled" "Source"
 ```
 
-或者在编辑器里改完代码后按 **Ctrl+Alt+F11**（Live Coding）。
+第 2 步的"工程 C++ 骨架"指：
 
-### 一个坑：不要和"只发二进制的插件"混用
+- `MMD_test.uproject` 里加回 `"Modules"` 段（`MMD_test`，Runtime/Default）
+- 建 `Source/MMD_test.Target.cs`、`Source/MMD_testEditor.Target.cs`、`Source/MMD_test/`（空模块）
 
-如果你的工程里同时装了**只有 `Build.cs`、没有实现代码的二进制插件**（很多商业插件是这种形态），
-一旦工程被 UBT 视为 C++ 工程，UBT 会把那种插件当成源码模块去编译，
-**生成一个空壳 DLL 覆盖掉原来的真货**，导致那个插件初始化失败。
-
-规避办法：编译期间把那种插件的 `Source` 目录临时改名移开，编完再改回来。
+编译完再从 `.uproject` 移除 `Modules` 并删掉 `Source/`，工程就回到纯蓝图状态。
+（这套骨架本次已经验证可用，需要时可以让我重新生成。）
 
 ---
 
@@ -88,15 +104,14 @@ ffmpeg -i "NewLevelSequence.beauty.mp4" -i "NewLevelSequence.wav" `
 
 ```
 Plugins/HEVC10Output/
-  HEVC10Output.uplugin
-  Source/HEVC10Output/
-    HEVC10Output.Build.cs
-    Public/HEVC10FFmpegPipe.h            ffmpeg 进程 + stdin 管道封装
-    Private/HEVC10FFmpegPipe.cpp
-    Public/Graph/MovieGraphHEVC10Node.h  MRG 输出节点
-    Private/Graph/MovieGraphHEVC10Node.cpp
-    Public/HEVC10OutputModule.h
-    Private/HEVC10OutputModule.cpp
+  HEVC10Output.uplugin                      插件描述（Installed: true = 二进制插件）
+  Binaries/Win64/UnrealEditor-HEVC10Output.dll   ← 实际加载的东西
+  Source.disabled/                          源码（改名即可参与编译）
+    HEVC10Output/HEVC10Output.Build.cs
+    HEVC10Output/Public/HEVC10FFmpegPipe.h          ffmpeg 进程 + stdin 管道封装
+    HEVC10Output/Private/HEVC10FFmpegPipe.cpp
+    HEVC10Output/Public/Graph/MovieGraphHEVC10Node.h    MRG 输出节点
+    HEVC10Output/Private/Graph/MovieGraphHEVC10Node.cpp
 ```
 
 核心实现只有两处：

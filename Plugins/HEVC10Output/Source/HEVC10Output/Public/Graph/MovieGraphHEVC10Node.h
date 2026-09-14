@@ -6,6 +6,7 @@
 #include "Graph/MovieGraphNode.h"
 #include "Graph/Nodes/MovieGraphVideoOutputNode.h"
 #include "HEVC10FFmpegPipe.h"
+#include "UObject/SoftObjectPath.h"
 
 #include "MovieGraphHEVC10Node.generated.h"
 
@@ -98,11 +99,15 @@ public:
 	int32 Quality = 19;
 
 	/**
-	 * Path to ffmpeg. A bare "ffmpeg.exe" is looked up on PATH.
-	 * If this is left at the default and ffmpeg is not on PATH, the output fails and logs an error.
+	 * Leave empty to look ffmpeg up on PATH - that is what a normal install needs.
+	 *
+	 * Only set this when the automatic lookup fails, or to force a specific build. FFilePath
+	 * rather than FString so the details panel offers a browse button instead of making you
+	 * type a path from memory.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HEVC 10-bit")
-	FString FfmpegPath = TEXT("ffmpeg.exe");
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HEVC 10-bit",
+		meta = (FilePathFilter = "exe", DisplayName = "FFmpeg Path"))
+	FFilePath FfmpegPath;
 
 	/** Raw ffmpeg arguments inserted just before the output path. Use for exotic tuning only. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HEVC 10-bit", meta = (AdvancedDisplay))

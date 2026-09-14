@@ -76,7 +76,8 @@ MRQ 16-bit 量化 → FFloat16Color (半精度 RGBA, 8B/px)
 
 ### 依赖
 
-- **ffmpeg**（含 `hevc_nvenc` 或 `libx265`），需要能从 `PATH` 找到，或在节点上填绝对路径
+- **ffmpeg**（含 `hevc_nvenc` 或 `libx265`），需要能从 `PATH` 找到。找不到时，在节点的
+  **FFmpeg Path** 里点 📁 选一个就行——留空才表示"自己去 `PATH` 找"
 - 硬件编码需要支持 HEVC Main10 的 GPU（NVIDIA Pascal 及以后 / AMD / Intel 均可）
 
 详细说明见 [插件 README](Plugins/HEVC10Output/README.md)。

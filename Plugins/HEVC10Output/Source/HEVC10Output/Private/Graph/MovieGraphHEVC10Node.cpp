@@ -91,7 +91,8 @@ TUniquePtr<MovieRenderGraph::IVideoCodecWriter> UMovieGraphHEVC10Node::Initializ
 	NewWriter->StableFileName = InInitializationContext.FileName;
 	NewWriter->OutputFileName = InInitializationContext.FileName;
 
-	NewWriter->Settings.FfmpegPath    = EvaluatedNode->FfmpegPath;
+	// An empty path is meaningful: it tells the pipe to resolve ffmpeg through PATH.
+	NewWriter->Settings.FfmpegPath    = EvaluatedNode->FfmpegPath.FilePath;
 	NewWriter->Settings.Resolution    = InInitializationContext.Resolution;
 	NewWriter->Settings.FrameRate     = EffectiveFrameRate;
 	NewWriter->Settings.bUseNvenc     = (EvaluatedNode->Encoder == EHEVC10Encoder::NVENC);
