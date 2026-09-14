@@ -762,7 +762,7 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildPlanSection()
 			[
 				SNew(SButton)
 				.Text(LOCTEXT("Clear", "清除生成的任务"))
-				.ToolTipText(LOCTEXT("ClearTip", "删除本插件生成的任务（按任务名前缀匹配）"))
+				.ToolTipText(LOCTEXT("ClearTip", "删除本插件生成的任务（按任务名前缀匹配）及其分段序列"))
 				.OnClicked(this, &SMRQAutoSegmentPanel::HandleClearClicked)
 			]
 		]
@@ -1442,9 +1442,14 @@ FReply SMRQAutoSegmentPanel::HandleClearClicked()
 	const int32 Removed = UMRQAutoSegmentLibrary::DeleteGeneratedJobs(
 		Queue, UMRQAutoSegmentLibrary::GetDefaultJobNamePrefix());
 
+	// The per-segment sequence copies exist only to carry each segment's playback range, so they
+	// go with the jobs that pointed at them.
+	const int32 RemovedSequences = UMRQAutoSegmentLibrary::DeleteGeneratedSequences();
+
 	if (StatusBlock.IsValid())
 	{
-		StatusBlock->SetText(FText::FromString(FString::Printf(TEXT("已清除 %d 个由本插件生成的任务。"), Removed)));
+		StatusBlock->SetText(FText::FromString(FString::Printf(
+			TEXT("已清除 %d 个由本插件生成的任务，以及 %d 个分段序列。"), Removed, RemovedSequences)));
 	}
 	return FReply::Handled();
 }

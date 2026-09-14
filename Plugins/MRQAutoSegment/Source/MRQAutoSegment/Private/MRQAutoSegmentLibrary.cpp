@@ -55,6 +55,21 @@ int32 UMRQAutoSegmentLibrary::DeleteGeneratedJobs(UMoviePipelineQueue* Queue, co
 	return FMRQAutoSegmentCore::DeleteGeneratedJobs(Queue, JobNamePrefix);
 }
 
+int32 UMRQAutoSegmentLibrary::DumpGeneratedGraphs(UMoviePipelineQueue* Queue, const FString& JobNamePrefix)
+{
+	return FMRQAutoSegmentCore::DumpGeneratedGraphs(Queue, JobNamePrefix);
+}
+
+int32 UMRQAutoSegmentLibrary::DeleteGeneratedSequences()
+{
+	return FMRQAutoSegmentCore::DeleteGeneratedSequences();
+}
+
+FString UMRQAutoSegmentLibrary::GetSegmentSequenceFolder()
+{
+	return FMRQAutoSegmentCore::GetSegmentSequenceFolder();
+}
+
 UMoviePipelineQueue* UMRQAutoSegmentLibrary::GetEditorQueue()
 {
 	if (GEditor == nullptr)

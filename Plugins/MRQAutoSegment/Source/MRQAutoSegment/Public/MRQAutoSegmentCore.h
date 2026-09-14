@@ -43,7 +43,22 @@ struct FMRQJobTemplate
 
 	/** Digits used to zero pad the frame numbers inside the range label. */
 	int32 PadDigits = 4;
+
+	/**
+	 * Give every job its own copy of the sequence, with the segment's playback range baked into
+	 * that copy, instead of pointing every job at the one shared sequence.
+	 *
+	 * MRQ applies a job's custom playback range by mutating the job's sequence in place. When
+	 * every job points at the same sequence asset those mutations overlap and the queue renders
+	 * the same frames for every segment - the file names differ but the contents do not. Baking
+	 * the range into a per-segment copy removes the overlap entirely: even if the engine falls
+	 * back to "use the sequence's own range", each job's sequence already holds its own range.
+	 */
+	bool bUniqueSequencePerJob = true;
 };
+
+/** Content folder the per-segment sequence copies are written into. */
+#define MRQ_AUTOSEGMENT_SEGMENT_ROOT TEXT("/Game/MRQAutoSegment/Segments")
 
 /**
  * Hardware probing, segment planning and queue generation.
@@ -95,6 +110,21 @@ public:
 
 	/** Removes jobs this plugin previously generated, identified by their JobName prefix. */
 	static int32 DeleteGeneratedJobs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
+
+	/**
+	 * Diagnostic. For every generated job, rebuilds the graph the engine builds at render time and
+	 * reports the frame range it carries, so "the plugin wrote the wrong numbers" can be told
+	 * apart from "the engine ignored the numbers".
+	 *
+	 * @return Number of jobs inspected.
+	 */
+	static int32 DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
+
+	/** Deletes the per-segment sequence copies written by GenerateJobs. @return Number deleted. */
+	static int32 DeleteGeneratedSequences();
+
+	/** Content folder holding the per-segment sequence copies, for display. */
+	static FString GetSegmentSequenceFolder();
 
 	/** "12.3 GiB" style formatting. */
 	static FString FormatBytes(int64 InBytes);
