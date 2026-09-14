@@ -461,7 +461,16 @@ int32 FMRQAutoSegmentCore::GenerateJobs(UMoviePipelineQueue* InQueue, ULevelSequ
 		}
 
 		Basic->bOverride_FileNameFormat = true;
-		Basic->FileNameFormat = AppendRangeToPattern(InTemplate.FileNameFormat, Entry.Label);
+
+		// With a sequence per segment, {sequence_name} already resolves to "<name>_<range>", so
+		// appending the label again would produce "Name_0000-0724_0000-0724".
+		const bool bLabelAlreadyThere =
+			InTemplate.FileNameFormat.Contains(Entry.Label)
+			|| (InTemplate.bSequencePerSegment && InTemplate.FileNameFormat.Contains(TEXT("{sequence_name}")));
+
+		Basic->FileNameFormat = bLabelAlreadyThere
+			? InTemplate.FileNameFormat
+			: AppendRangeToPattern(InTemplate.FileNameFormat, Entry.Label);
 
 		// The engine stores the range as a half open [Start, End) interval and feeds these
 		// straight into TRange::SetPlaybackRange, so the end frame has to be exclusive.

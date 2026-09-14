@@ -21,6 +21,29 @@ MMD2Unreal 把 VMD 动作导入成 `AnimSequence`，并把角色的 `SkeletalMes
 4. 每帧把动画位置设为 Sequencer 的当前时间
 5. 关闭最后一个 Sequencer / 退出编辑器时，**把上述状态逐项还原**（只还原它自己改过的）
 
+**序列在 PIE 里播放时同样会同步**（`MMDSequencerPreview.DriveInPIE`，默认开）。
+这一点很关键，原因见下。
+
+### 渲染时也必须同步（否则每段渲染出来都一样）
+
+早期版本在 PIE 里**直接跳过**，理由是"游戏世界自己会播这些动画"。对 MMD 动作来说这个理由是
+错的：**VMD 挂在骨骼网格组件上（`AnimationSingleNode` + `AnimToPlay`），不是 Sequencer 轨道**，
+所以没有任何东西把它和序列时间绑在一起。组件只是按自己的节奏从头播。
+
+而 **Movie Render Queue 正是通过 PIE 渲染的**。于是渲染成了唯一没有同步的场景：
+
+- 每个任务开始时动作都从它自己的第 0 帧重新开始
+- 结果是**每个分段渲染出来都是同一段动作**，不管帧范围设成什么
+
+这个现象极容易被误判成"帧范围没生效"——实测过：两个分段（`0000-0354` 与 `0355-0709`）
+逐帧比对平均像素差只有 **0.11/255**，但**段内**首尾帧差有 **10/255**，也就是两边都从头播了同一段动作。
+
+现在 PIE 分支会找到该世界里的 `ULevelSequencePlayer`，用它当前时间驱动同一批组件；
+没有序列在跑（普通 Play-In-Editor）时照旧不碰。
+
+> 更彻底的做法是让 MMD 动作本身进入 Sequencer 轨道（由 Sequencer 求值），
+> 那样渲染、预览、导出都由同一条时间线驱动。本插件是把"组件自播"这条路的缺口补上。
+
 ### 为什么必须冻结播放速率
 
 早期版本在 `SetPosition(时间轴时间)` 的同时让动画保持 `playRate = 1` 播放着。结果是：
@@ -74,6 +97,8 @@ AnimSequence 的 AssetUserData 中包含 类名为 "MMDVmdAssetUserData" 的条�
 |---|---|
 | `MMDSequencerPreview.Enable 1` | 启用（默认） |
 | `MMDSequencerPreview.Enable 0` | 停用，并立即还原所有改动过的开关 |
+| `MMDSequencerPreview.DriveInPIE 1` | 序列在 PIE 里播放时也同步（默认开，MRQ 渲染需要它） |
+| `MMDSequencerPreview.DriveInPIE 0` | PIE 里不碰，退回旧行为（渲染会每段都是同一段） |
 | `MMDSequencerPreview.Apply` | 立即执行一次同步（正常每帧自动执行，用于手动刷新） |
 
 ### 日志
@@ -84,6 +109,9 @@ AnimSequence 的 AssetUserData 中包含 类名为 "MMDVmdAssetUserData" 的条�
 
 - 动画是**跟随 Sequencer 时间轴**回放的，而不是让组件自己按自己的时钟循环。
   所以 Sequencer 停住时画面也停住——这是刻意的，方便看构图。
+- **PIE 里只有"有序列在跑"时才会同步。** 普通 Play-In-Editor（没有序列播放器）插件不碰，
+  免得干扰正常的游戏测试。这也意味着：**渲染时必须让 MRQ 用 PIE 执行器**（默认的
+  「Render (Local)」就是），否则同步不会发生，每段又会变成同一段动作。
 - 如果某个模型用 **AnimationBlueprint** 模式而不是单一节点（比如场景网格），插件**不会碰它**。
   那种情况需要别的方案（AnimBP 的编辑器预览）。
 - 首次打开序列时，生效时刻是**下一帧**（不是构造序列的瞬间），这是为了避开 UE 在 Sequencer

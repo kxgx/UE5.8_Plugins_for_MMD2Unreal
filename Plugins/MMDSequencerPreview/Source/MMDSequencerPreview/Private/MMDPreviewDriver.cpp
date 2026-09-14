@@ -15,6 +15,8 @@
 #include "ISequencer.h"
 #include "ISequencerModule.h"
 #include "Interfaces/Interface_AssetUserData.h"
+#include "LevelSequenceActor.h"
+#include "LevelSequencePlayer.h"
 #include "Misc/CoreMisc.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/UObjectIterator.h"
@@ -32,6 +34,55 @@ namespace
 		1,
 		TEXT("1 = drive MMD2Unreal animations from Sequencer in the editor viewport, 0 = off."),
 		ECVF_Default);
+
+	/**
+	 * Drive MMD motion while a sequence plays in PIE as well.
+	 *
+	 * Movie Render Queue renders through PIE, so without this a render is the one place the
+	 * motion is not synced to sequence time: the VMD plays from its own frame 0 in every job and
+	 * every rendered segment ends up showing the same motion. That looks exactly like "the frame
+	 * ranges are being ignored", which is very misleading.
+	 */
+	static TAutoConsoleVariable<int32> CVarMMDPreviewInPIE(
+		TEXT("MMDSequencerPreview.DriveInPIE"),
+		1,
+		TEXT("1 = also sync MMD motion to the sequence playing in PIE (needed for MRQ renders), 0 = off."),
+		ECVF_Default);
+
+	/** The player currently driving a sequence in InWorld, if there is one. */
+	static ULevelSequencePlayer* FindSequencePlayer(UWorld* InWorld)
+	{
+		if (InWorld == nullptr)
+		{
+			return nullptr;
+		}
+
+		ULevelSequencePlayer* Fallback = nullptr;
+		for (TActorIterator<ALevelSequenceActor> It(InWorld); It; ++It)
+		{
+			ULevelSequencePlayer* Player = It->GetSequencePlayer();
+			if (Player == nullptr)
+			{
+				continue;
+			}
+
+			// A world can hold several sequence actors; the running one is the render's.
+			if (Player->IsPlaying())
+			{
+				return Player;
+			}
+			Fallback = Player;
+		}
+		return Fallback;
+	}
+
+	/** Seconds, from a frame time that may use any frame rate. */
+	static double ToSeconds(const FQualifiedFrameTime& InTime)
+	{
+		return InTime.Rate.AsDecimal() > 0.0
+			? InTime.Time.AsDecimal() / InTime.Rate.AsDecimal()
+			: 0.0;
+	}
 }
 
 void FMMDPreviewDriver::Startup()
@@ -65,7 +116,7 @@ void FMMDPreviewDriver::Startup()
 		this, &FMMDPreviewDriver::HandleEditorPreExit);
 
 	UE_LOG(LogMMDSequencerPreview, Log,
-		TEXT("Started. Opening a Level Sequence in Sequencer will now drive MMD motion in the viewport."));
+		TEXT("Started. Opening a Level Sequence in Sequencer will now drive MMD motion in the viewport, and a sequence playing in PIE will drive it during renders."));
 }
 
 void FMMDPreviewDriver::HandleEditorPreExit()
@@ -243,38 +294,59 @@ bool FMMDPreviewDriver::Tick(float DeltaTime)
 		return true;
 	}
 
-	// Never interfere with PIE - the game world plays these animations itself.
+	// PIE used to be left strictly alone, on the grounds that the game world plays these
+	// animations itself. It does not, for MMD motion: the VMD lives on the skeletal mesh
+	// component, not on a Sequencer track, so nothing ties it to sequence time. Movie Render
+	// Queue renders through PIE, so that gap made every render job replay the motion from its
+	// own frame 0. Follow the sequence player in PIE for the same reason we follow Sequencer in
+	// the editor - but only while a sequence is actually running there.
+	UWorld* TargetWorld = nullptr;
+	double TimeSeconds = 0.0;
+
 	if (GEditor->PlayWorld != nullptr)
 	{
-		return true;
-	}
+		if (CVarMMDPreviewInPIE.GetValueOnGameThread() == 0)
+		{
+			return true;
+		}
 
-	UWorld* EditorWorld = GEditor->GetEditorWorldContext().World();
-	if (EditorWorld == nullptr)
+		ULevelSequencePlayer* Player = FindSequencePlayer(GEditor->PlayWorld);
+		if (Player == nullptr)
+		{
+			// A plain play-in-editor session with no sequence running: nothing to sync to.
+			return true;
+		}
+
+		TargetWorld = GEditor->PlayWorld;
+		TimeSeconds = ToSeconds(Player->GetCurrentTime());
+	}
+	else
 	{
-		RestoreTouchedComponents();
-		return true;
+		TargetWorld = GEditor->GetEditorWorldContext().World();
+		if (TargetWorld == nullptr)
+		{
+			RestoreTouchedComponents();
+			return true;
+		}
+
+		TSharedPtr<ISequencer> Sequencer = GetActiveSequencer();
+		if (!Sequencer.IsValid())
+		{
+			// No sequence open: put everything back the way we found it.
+			RestoreTouchedComponents();
+			return true;
+		}
+
+		TimeSeconds = ToSeconds(Sequencer->GetGlobalTime());
 	}
 
-	TSharedPtr<ISequencer> Sequencer = GetActiveSequencer();
-	if (!Sequencer.IsValid())
-	{
-		// No sequence open: put everything back the way we found it.
-		RestoreTouchedComponents();
-		return true;
-	}
-
-	const FQualifiedFrameTime QualifiedTime = Sequencer->GetGlobalTime();
-	const double TimeSeconds = QualifiedTime.Rate.AsDecimal() > 0.0
-		? QualifiedTime.Time.AsDecimal() / QualifiedTime.Rate.AsDecimal()
-		: 0.0;
 	const float FrameTime = static_cast<float>(TimeSeconds);
 
-	// --- MMD motion: keep SingleNode components evaluating at the Sequencer's time ----
+	// --- MMD motion: keep SingleNode components evaluating at the sequence's time ----
 	for (TObjectIterator<USkeletalMeshComponent> It; It; ++It)
 	{
 		USkeletalMeshComponent* Component = *It;
-		if (!IsValid(Component) || Component->GetWorld() != EditorWorld)
+		if (!IsValid(Component) || Component->GetWorld() != TargetWorld)
 		{
 			continue;
 		}
@@ -315,7 +387,7 @@ bool FMMDPreviewDriver::Tick(float DeltaTime)
 	}
 
 	// --- MMD camera: make sure the VMD camera actor ticks in the viewport ------------
-	for (TActorIterator<AActor> It(EditorWorld); It; ++It)
+	for (TActorIterator<AActor> It(TargetWorld); It; ++It)
 	{
 		AActor* Actor = *It;
 		if (!IsMMDCameraActor(Actor))
