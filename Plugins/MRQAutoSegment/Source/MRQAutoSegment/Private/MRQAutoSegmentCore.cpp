@@ -33,75 +33,6 @@ namespace
 	/** A limit that does not restrict anything, for constraints that are reported only. */
 	constexpr int32 kNoLimit = MAX_int32;
 }
-
-/**
- * Writes a copy of InSource whose playback range is exactly one segment.
- *
- * The copy is a real asset under MRQ_AUTOSEGMENT_SEGMENT_ROOT rather than a transient object,
- * because the render may run in a separate process ("Render (New Process)"), where a
- * transient object would not exist.
- *
- * @param InEndFrameInclusive  Last frame of the segment, inclusive. Stored half open.
- * @return The new sequence, or nullptr if the asset could not be written.
- */
-ULevelSequence* FMRQAutoSegmentCore::MakeSegmentSequence(ULevelSequence* InSource, int32 InStartFrame, int32 InEndFrameInclusive, const FString& InLabel)
-{
-	if (InSource == nullptr || InSource->GetMovieScene() == nullptr)
-	{
-		return nullptr;
-	}
-
-	const FString AssetName = FString::Printf(TEXT("%s_%s"), *InSource->GetName(), *InLabel);
-	const FString PackageName = FString::Printf(TEXT("%s/%s"), MRQ_AUTOSEGMENT_SEGMENT_ROOT, *AssetName);
-
-	UPackage* Package = CreatePackage(*PackageName);
-	if (Package == nullptr)
-	{
-		return nullptr;
-	}
-
-	// Re-generating the same queue must not trip over the previous run's assets.
-	if (ULevelSequence* Existing = FindObject<ULevelSequence>(Package, *AssetName))
-	{
-		Existing->ClearFlags(RF_Public | RF_Standalone);
-		Existing->Rename(nullptr, GetTransientPackage(), REN_DontCreateRedirectors | REN_NonTransactional);
-	}
-
-	ULevelSequence* Segment = DuplicateObject<ULevelSequence>(InSource, Package, FName(*AssetName));
-	if (Segment == nullptr || Segment->GetMovieScene() == nullptr)
-	{
-		return nullptr;
-	}
-
-	UMovieScene* Scene = Segment->GetMovieScene();
-
-	// The segment bounds are display-rate frames; the playback range is in tick resolution
-	// and is half open, so the inclusive end frame becomes End + 1.
-	const FFrameRate DisplayRate = Scene->GetDisplayRate();
-	const FFrameRate TickResolution = Scene->GetTickResolution();
-	const FFrameNumber StartTick =
-		FFrameRate::TransformTime(FFrameTime(FFrameNumber(InStartFrame)), DisplayRate, TickResolution).FloorToFrame();
-	const FFrameNumber EndTick =
-		FFrameRate::TransformTime(FFrameTime(FFrameNumber(InEndFrameInclusive + 1)), DisplayRate, TickResolution).CeilToFrame();
-
-	Scene->SetPlaybackRangeLocked(false);
-#if WITH_EDITOR
-	Scene->SetReadOnly(false);
-#endif
-	Scene->SetPlaybackRange(TRange<FFrameNumber>(StartTick, EndTick));
-
-	FAssetRegistryModule::AssetCreated(Segment);
-	Package->MarkPackageDirty();
-
-	const FString FileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
-	FSavePackageArgs SaveArgs;
-	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
-	SaveArgs.SaveFlags = SAVE_NoError;
-	UPackage::SavePackage(Package, Segment, *FileName, SaveArgs);
-
-	return Segment;
-}
-
 FString FMRQAutoSegmentCore::FormatBytes(int64 InBytes)
 {
 	static const TCHAR* Units[] = { TEXT("B"), TEXT("KiB"), TEXT("MiB"), TEXT("GiB"), TEXT("TiB") };
@@ -417,27 +348,13 @@ int32 FMRQAutoSegmentCore::GenerateJobs(UMoviePipelineQueue* InQueue, ULevelSequ
 		Job->SetConsumed(false);
 		Job->SetIsEnabled(true);
 
-		// Every job pointing at the same sequence asset makes MRQ apply the per-job playback range
-		// by mutating that one asset, and the segments then all render the same frames. Give each
-		// job its own copy with the range already baked in instead.
-		ULevelSequence* JobSequence = InSequence;
-		if (InTemplate.bUniqueSequencePerJob && InSequence != nullptr)
+		// Every job points at the sequence the user picked. The per-segment frame range lives on
+		// the job's Basic config and nowhere else - the plugin deliberately does not write extra
+		// sequence assets, because copies of the user's sequence end up being identical to each
+		// other and the render queue then repeats the first job.
+		if (InSequence != nullptr)
 		{
-			if (ULevelSequence* Segment = MakeSegmentSequence(InSequence, Entry.StartFrame, Entry.EndFrame, Entry.Label))
-			{
-				JobSequence = Segment;
-			}
-			else
-			{
-				UE_LOG(LogMRQAutoSegment, Warning,
-					TEXT("Could not write a segment sequence for '%s'; this job falls back to the shared sequence."),
-					*Entry.Label);
-			}
-		}
-
-		if (JobSequence != nullptr)
-		{
-			Job->Sequence = FSoftObjectPath(JobSequence);
+			Job->Sequence = FSoftObjectPath(InSequence);
 		}
 		if (!InMapPath.IsEmpty())
 		{
@@ -520,9 +437,9 @@ int32 FMRQAutoSegmentCore::GenerateJobs(UMoviePipelineQueue* InQueue, ULevelSequ
 		Basic->bOverride_TemporalSampleCount = true;
 		Basic->TemporalSampleCount = FMath::Max(InTemplate.TemporalSampleCount, 1);
 
-		UE_LOG(LogMRQAutoSegment, Log, TEXT("Created job '%s'  frames=%d..%d  file=%s  sequence=%s"),
-			*Job->JobName, Entry.StartFrame, Entry.EndFrame, *Basic->FileNameFormat,
-			*GetNameSafe(JobSequence));
+		UE_LOG(LogMRQAutoSegment, Log, TEXT("Created job '%s'  frames=%d..%d  dir=%s  file=%s"),
+			*Job->JobName, Entry.StartFrame, Entry.EndFrame,
+			*Basic->OutputDirectory.Path, *Basic->FileNameFormat);
 
 		++Created;
 	}
@@ -617,65 +534,7 @@ int32 FMRQAutoSegmentCore::DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, con
 	return Inspected;
 }
 
-FString FMRQAutoSegmentCore::GetSegmentSequenceFolder()
-{
-	return FString(MRQ_AUTOSEGMENT_SEGMENT_ROOT);
-}
-
 FString FMRQAutoSegmentCore::GetSegmentOutputFolder(const FString& InOutputDirectory, const FString& InLabel)
 {
 	return FPaths::Combine(InOutputDirectory, InLabel);
-}
-
-
-int32 FMRQAutoSegmentCore::DeleteGeneratedSequences()
-{
-	const FString Root = GetSegmentSequenceFolder();
-	const FString Folder = FPackageName::LongPackageNameToFilename(Root, TEXT(""));
-
-	if (!IFileManager::Get().DirectoryExists(*Folder))
-	{
-		return 0;
-	}
-
-	// The asset registry does not reliably see packages written earlier in the same session, so
-	// the files on disk are the source of truth here.
-	TArray<FString> Files;
-	IFileManager::Get().FindFilesRecursive(Files, *Folder, TEXT("*.uasset"), /*Files=*/true, /*Directories=*/false);
-
-	TArray<UObject*> ToDelete;
-	for (const FString& File : Files)
-	{
-		const FString PackageName = FPackageName::FilenameToLongPackageName(File);
-		UPackage* Package = LoadPackage(nullptr, *PackageName, LOAD_None);
-		if (Package == nullptr)
-		{
-			continue;
-		}
-
-		if (UObject* Asset = FindObject<UObject>(Package, *FPackageName::GetShortName(PackageName)))
-		{
-			ToDelete.Add(Asset);
-		}
-	}
-
-	int32 Deleted = 0;
-	if (ToDelete.Num() > 0)
-	{
-		Deleted = ObjectTools::ForceDeleteObjects(ToDelete, /*bShowConfirmation=*/false);
-	}
-
-	// Sweep up anything the object deletion left behind, then the folder itself.
-	for (const FString& File : Files)
-	{
-		if (IFileManager::Get().FileExists(*File))
-		{
-			IFileManager::Get().Delete(*File, /*RequireExists=*/false, /*EvenReadOnly=*/true, /*Quiet=*/true);
-			IFileManager::Get().Delete(*(FPaths::ChangeExtension(File, TEXT("uexp"))), false, true, true);
-		}
-	}
-	IFileManager::Get().DeleteDirectory(*Folder, /*RequireExists=*/false, /*Tree=*/true);
-
-	UE_LOG(LogMRQAutoSegment, Display, TEXT("Deleted %d per-segment sequence(s) from %s"), Deleted, *Root);
-	return Deleted;
 }

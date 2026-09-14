@@ -60,16 +60,6 @@ int32 UMRQAutoSegmentLibrary::DumpGeneratedGraphs(UMoviePipelineQueue* Queue, co
 	return FMRQAutoSegmentCore::DumpGeneratedGraphs(Queue, JobNamePrefix);
 }
 
-int32 UMRQAutoSegmentLibrary::DeleteGeneratedSequences()
-{
-	return FMRQAutoSegmentCore::DeleteGeneratedSequences();
-}
-
-FString UMRQAutoSegmentLibrary::GetSegmentSequenceFolder()
-{
-	return FMRQAutoSegmentCore::GetSegmentSequenceFolder();
-}
-
 UMoviePipelineQueue* UMRQAutoSegmentLibrary::GetEditorQueue()
 {
 	if (GEditor == nullptr)

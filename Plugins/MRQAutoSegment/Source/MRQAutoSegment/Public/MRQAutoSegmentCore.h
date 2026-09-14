@@ -58,22 +58,7 @@ struct FMRQJobTemplate
 
 	/** Digits used to zero pad the frame numbers inside the range label. */
 	int32 PadDigits = 4;
-
-	/**
-	 * Give every job its own copy of the sequence, with the segment's playback range baked into
-	 * that copy, instead of pointing every job at the one shared sequence.
-	 *
-	 * MRQ applies a job's custom playback range by mutating the job's sequence in place. When
-	 * every job points at the same sequence asset those mutations overlap and the queue renders
-	 * the same frames for every segment - the file names differ but the contents do not. Baking
-	 * the range into a per-segment copy removes the overlap entirely: even if the engine falls
-	 * back to "use the sequence's own range", each job's sequence already holds its own range.
-	 */
-	bool bUniqueSequencePerJob = true;
 };
-
-/** Content folder the per-segment sequence copies are written into. */
-#define MRQ_AUTOSEGMENT_SEGMENT_ROOT TEXT("/Game/MRQAutoSegment/Segments")
 
 /**
  * Hardware probing, segment planning and queue generation.
@@ -115,9 +100,10 @@ public:
 	/**
 	 * Writes one job per segment into InQueue.
 	 *
-	 * Each job is put into Basic configuration mode: that mode builds its UMovieGraphConfig
-	 * just-in-time at render time, which is what lets us set the file name format and the
-	 * playback range per job without touching - or duplicating - the user's own graph asset.
+	 * Every job points at InSequence itself and carries its own frame range on its Basic config;
+	 * the plugin writes no sequence assets of its own. Basic mode builds its UMovieGraphConfig
+	 * just-in-time at render time, which is what lets the file name, the output folder and the
+	 * playback range be set per job without touching the user's graph.
 	 *
 	 * @return Number of jobs actually created.
 	 */
@@ -127,19 +113,6 @@ public:
 	static int32 DeleteGeneratedJobs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
 
 	/**
-	 * Writes - or refreshes - the copy of InSource whose playback range is exactly one segment,
-	 * and returns it.
-	 *
-	 * The copy is a real asset rather than a transient object, because a render started with
-	 * "Render (New Process)" happens in a different process where a transient object would not
-	 * exist.
-	 *
-	 * @param InEndFrameInclusive  Last frame of the segment, inclusive; stored half open.
-	 * @return The new sequence, or nullptr if the asset could not be written.
-	 */
-	static ULevelSequence* MakeSegmentSequence(ULevelSequence* InSource, int32 InStartFrame, int32 InEndFrameInclusive, const FString& InLabel);
-
-	/**
 	 * Diagnostic. For every generated job, rebuilds the graph the engine builds at render time and
 	 * reports the frame range it carries, so "the plugin wrote the wrong numbers" can be told
 	 * apart from "the engine ignored the numbers".
@@ -147,12 +120,6 @@ public:
 	 * @return Number of jobs inspected.
 	 */
 	static int32 DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
-
-	/** Deletes the per-segment sequence copies written by GenerateJobs. @return Number deleted. */
-	static int32 DeleteGeneratedSequences();
-
-	/** Content folder holding the per-segment sequence copies, for display. */
-	static FString GetSegmentSequenceFolder();
 
 	/**
 	 * Per-segment output folder: "<OutputDirectory>/<label>".
