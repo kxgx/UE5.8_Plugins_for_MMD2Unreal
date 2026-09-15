@@ -56,6 +56,13 @@ struct FMRQJobTemplate
 	 */
 	int32 TemporalSampleCount = 8;
 
+	/**
+	 * Frames rendered before the first output frame, so temporal effects (TSR, TAA, Lumen) have
+	 * converged before anything is written. Also a Globals-branch property, so it applies to any
+	 * renderer. 0 disables the warm-up.
+	 */
+	int32 NumWarmUpFrames = 64;
+
 	/** Digits used to zero pad the frame numbers inside the range label. */
 	int32 PadDigits = 4;
 };
@@ -120,6 +127,37 @@ public:
 	 * @return Number of jobs inspected.
 	 */
 	static int32 DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, const FString& InJobNamePrefix);
+
+	/**
+	 * Turns a directory that may still contain MRQ's own tokens into a real path. Only
+	 * {project_dir} is expanded - that is the token the panel hands out by default.
+	 */
+	static FString ResolveDirectoryTokens(const FString& InDirectory);
+
+	/**
+	 * Collects the rendered file for each range label, in label order.
+	 *
+	 * Files are matched by the range label appearing in the name, so the user's own
+	 * FileNameFormat does not have to be understood here. All of them sit in InDirectory.
+	 *
+	 * @return True when exactly one file was found for every label.
+	 */
+	static bool CollectSegmentFiles(const FString& InDirectory, const TArray<FString>& InLabels, TArray<FString>& OutFiles, FString& OutError);
+
+	/**
+	 * Locates ffmpeg. Empty or missing InConfigured falls through to PATH and then to the
+	 * locations the common Windows package managers install into. OutReason describes the choice.
+	 */
+	static FString ResolveFfmpegPath(const FString& InConfigured, FString& OutReason);
+
+	/**
+	 * Joins InFiles into InOutputFile with ffmpeg's concat demuxer, stream copying so nothing is
+	 * re-encoded. All inputs must come from the same render settings, which segments of one plan
+	 * do.
+	 *
+	 * @return True on a zero exit code; otherwise OutError carries ffmpeg's own message.
+	 */
+	static bool MergeVideos(const FString& InFfmpegPath, const TArray<FString>& InFiles, const FString& InOutputFile, FString& OutError);
 
 	/** "12.3 GiB" style formatting. */
 	static FString FormatBytes(int64 InBytes);

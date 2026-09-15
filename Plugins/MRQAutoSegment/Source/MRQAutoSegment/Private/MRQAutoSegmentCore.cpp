@@ -5,6 +5,8 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMemory.h"
+#include "HAL/PlatformProcess.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "ObjectTools.h"
@@ -442,6 +444,11 @@ int32 FMRQAutoSegmentCore::GenerateJobs(UMoviePipelineQueue* InQueue, ULevelSequ
 		Basic->bOverride_TemporalSampleCount = true;
 		Basic->TemporalSampleCount = FMath::Max(InTemplate.TemporalSampleCount, 1);
 
+		// Warm-up frames sit on the Globals branch too (MovieGraphWarmUpSettingNode), so they
+		// apply whatever renderer the graph uses.
+		Basic->bOverride_NumWarmUpFrames = true;
+		Basic->NumWarmUpFrames = FMath::Max(InTemplate.NumWarmUpFrames, 0);
+
 		UE_LOG(LogMRQAutoSegment, Log, TEXT("Created job '%s'  frames=%d..%d  dir=%s  file=%s"),
 			*Job->JobName, Entry.StartFrame, Entry.EndFrame,
 			*Basic->OutputDirectory.Path, *Basic->FileNameFormat);
@@ -537,4 +544,186 @@ int32 FMRQAutoSegmentCore::DumpGeneratedGraphs(UMoviePipelineQueue* InQueue, con
 
 	UE_LOG(LogMRQAutoSegment, Display, TEXT("[dump] inspected %d job(s)"), Inspected);
 	return Inspected;
+}
+
+FString FMRQAutoSegmentCore::ResolveDirectoryTokens(const FString& InDirectory)
+{
+	if (InDirectory.IsEmpty())
+	{
+		return FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("MovieRenders"));
+	}
+
+	FString Directory = InDirectory;
+	const FString ProjectDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+	Directory.ReplaceInline(TEXT("{project_dir}"), *ProjectDir);
+	Directory.RemoveFromEnd(TEXT("/"));
+
+	return FPaths::ConvertRelativePathToFull(Directory);
+}
+
+bool FMRQAutoSegmentCore::CollectSegmentFiles(const FString& InDirectory, const TArray<FString>& InLabels, TArray<FString>& OutFiles, FString& OutError)
+{
+	OutFiles.Reset();
+
+	if (!IFileManager::Get().DirectoryExists(*InDirectory))
+	{
+		OutError = FString::Printf(TEXT("输出目录不存在：%s"), *InDirectory);
+		return false;
+	}
+
+	TArray<FString> Present;
+	IFileManager::Get().FindFiles(Present, *(InDirectory / TEXT("*")), /*Files=*/true, /*Directories=*/false);
+
+	for (const FString& Label : InLabels)
+	{
+		// Match on the range label: it is unique per segment and survives token resolution,
+		// so the user's own FileNameFormat does not have to be parsed here.
+		FString Match;
+		int32 Matches = 0;
+		for (const FString& Name : Present)
+		{
+			if (Name.Contains(Label, ESearchCase::IgnoreCase) && !Name.EndsWith(TEXT(".txt"), ESearchCase::IgnoreCase))
+			{
+				Match = Name;
+				++Matches;
+			}
+		}
+
+		if (Matches == 0)
+		{
+			OutError = FString::Printf(TEXT("在 %s 里找不到 %s 段的输出文件。"), *InDirectory, *Label);
+			return false;
+		}
+		if (Matches > 1)
+		{
+			OutError = FString::Printf(
+				TEXT("%s 段在 %s 里匹配到 %d 个文件（图像序列无法合并）。"), *Label, *InDirectory, Matches);
+			return false;
+		}
+
+		OutFiles.Add(FPaths::Combine(InDirectory, Match));
+	}
+
+	return OutFiles.Num() > 0;
+}
+
+FString FMRQAutoSegmentCore::ResolveFfmpegPath(const FString& InConfigured, FString& OutReason)
+{
+	if (!InConfigured.IsEmpty())
+	{
+		if (FPaths::FileExists(InConfigured))
+		{
+			OutReason = TEXT("使用面板里指定的路径");
+			return InConfigured;
+		}
+		OutReason = FString::Printf(TEXT("面板路径不存在（%s），继续自动查找"), *InConfigured);
+	}
+
+	const FString PathVariable = FPlatformMisc::GetEnvironmentVariable(TEXT("PATH"));
+	TArray<FString> PathDirs;
+	PathVariable.ParseIntoArray(PathDirs, TEXT(";"), /*InCullEmpty=*/true);
+	for (const FString& Dir : PathDirs)
+	{
+		const FString Candidate = FPaths::Combine(Dir, TEXT("ffmpeg.exe"));
+		if (FPaths::FileExists(Candidate))
+		{
+			OutReason = TEXT("在 PATH 里找到");
+			return Candidate;
+		}
+	}
+
+	// The locations the usual Windows package managers install into, all derived from env vars
+	// so nothing here is tied to one machine.
+	struct FLayout { const TCHAR* EnvVar; const TCHAR* Relative; };
+	static const FLayout Layouts[] =
+	{
+		{ TEXT("USERPROFILE"),  TEXT("scoop/shims/ffmpeg.exe") },
+		{ TEXT("LOCALAPPDATA"), TEXT("Microsoft/WinGet/Links/ffmpeg.exe") },
+		{ TEXT("ProgramData"),  TEXT("chocolatey/bin/ffmpeg.exe") },
+		{ TEXT("SystemDrive"),  TEXT("ffmpeg/bin/ffmpeg.exe") },
+	};
+
+	for (const FLayout& Layout : Layouts)
+	{
+		const FString Root = FPlatformMisc::GetEnvironmentVariable(Layout.EnvVar);
+		if (Root.IsEmpty())
+		{
+			continue;
+		}
+
+		const FString Candidate = FPaths::Combine(Root, Layout.Relative);
+		if (FPaths::FileExists(Candidate))
+		{
+			OutReason = FString::Printf(TEXT("在 %%%s%% 下找到"), Layout.EnvVar);
+			return Candidate;
+		}
+	}
+
+	OutReason = TEXT("没找到，回退到 PATH 查找 'ffmpeg.exe'");
+	return TEXT("ffmpeg.exe");
+}
+
+bool FMRQAutoSegmentCore::MergeVideos(const FString& InFfmpegPath, const TArray<FString>& InFiles, const FString& InOutputFile, FString& OutError)
+{
+	if (InFiles.Num() == 0)
+	{
+		OutError = TEXT("没有可合并的分段文件");
+		return false;
+	}
+
+	if (InFiles.Num() == 1)
+	{
+		// Nothing to join.
+		if (IFileManager::Get().Copy(*InOutputFile, *InFiles[0], true, true) != COPY_OK)
+		{
+			OutError = FString::Printf(TEXT("无法写出 %s"), *InOutputFile);
+			return false;
+		}
+		return true;
+	}
+
+	// The concat demuxer wants forward slashes and needs -safe 0 for absolute paths.
+	FString ListContents;
+	for (const FString& File : InFiles)
+	{
+		FString Absolute = FPaths::ConvertRelativePathToFull(File).Replace(TEXT("\\"), TEXT("/"));
+		Absolute.ReplaceInline(TEXT("'"), TEXT("'\\''"));
+		ListContents += FString::Printf(TEXT("file '%s'\n"), *Absolute);
+	}
+
+	const FString ListFile = FPaths::Combine(FPaths::GetPath(InOutputFile), TEXT("MRQAutoSegment_concat.txt"));
+	if (!FFileHelper::SaveStringToFile(ListContents, *ListFile))
+	{
+		OutError = FString::Printf(TEXT("无法写出合并列表 %s"), *ListFile);
+		return false;
+	}
+
+	const FString Arguments = FString::Printf(
+		TEXT("-y -hide_banner -loglevel error -f concat -safe 0 -i \"%s\" -c copy \"%s\""),
+		*ListFile, *InOutputFile);
+
+	int32 ReturnCode = -1;
+	FString StdOut;
+	FString StdErr;
+	const bool bLaunched = FPlatformProcess::ExecProcess(*InFfmpegPath, *Arguments, &ReturnCode, &StdOut, &StdErr);
+
+	IFileManager::Get().Delete(*ListFile, false, true, true);
+
+	if (!bLaunched)
+	{
+		OutError = FString::Printf(TEXT("无法启动 %s"), *InFfmpegPath);
+		return false;
+	}
+	if (ReturnCode != 0)
+	{
+		OutError = StdErr.IsEmpty() ? FString::Printf(TEXT("ffmpeg 返回 %d"), ReturnCode) : StdErr.TrimStartAndEnd();
+		return false;
+	}
+	if (!FPaths::FileExists(InOutputFile))
+	{
+		OutError = FString::Printf(TEXT("ffmpeg 成功返回但没写出 %s"), *InOutputFile);
+		return false;
+	}
+
+	return true;
 }

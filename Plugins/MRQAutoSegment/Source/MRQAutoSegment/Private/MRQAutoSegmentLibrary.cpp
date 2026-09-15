@@ -38,7 +38,8 @@ int32 UMRQAutoSegmentLibrary::GenerateJobs(
 	const FString& OutputDirectory,
 	const FString& FileNameFormat,
 	const FString& ResolutionProfile,
-	int32 TemporalSampleCount)
+	int32 TemporalSampleCount,
+	int32 NumWarmUpFrames)
 {
 	FMRQJobTemplate Template;
 	Template.OutputDirectory = OutputDirectory;
@@ -46,6 +47,7 @@ int32 UMRQAutoSegmentLibrary::GenerateJobs(
 	Template.ResolutionProfile = ResolutionProfile.IsEmpty() ? NAME_None : FName(*ResolutionProfile);
 	Template.JobNamePrefix = GetDefaultJobNamePrefix();
 	Template.TemporalSampleCount = FMath::Max(TemporalSampleCount, 1);
+	Template.NumWarmUpFrames = FMath::Max(NumWarmUpFrames, 0);
 
 	return FMRQAutoSegmentCore::GenerateJobs(Queue, Sequence, MapPath, Plan, Template);
 }
@@ -58,6 +60,27 @@ int32 UMRQAutoSegmentLibrary::DeleteGeneratedJobs(UMoviePipelineQueue* Queue, co
 int32 UMRQAutoSegmentLibrary::DumpGeneratedGraphs(UMoviePipelineQueue* Queue, const FString& JobNamePrefix)
 {
 	return FMRQAutoSegmentCore::DumpGeneratedGraphs(Queue, JobNamePrefix);
+}
+
+FString UMRQAutoSegmentLibrary::MergeVideos(const TArray<FString>& Files, const FString& OutputFile)
+{
+	FString Reason;
+	const FString Ffmpeg = FMRQAutoSegmentCore::ResolveFfmpegPath(FString(), Reason);
+
+	FString Error;
+	if (!FMRQAutoSegmentCore::MergeVideos(Ffmpeg, Files, OutputFile, Error))
+	{
+		return Error.IsEmpty() ? TEXT("ffmpeg 合并失败") : Error;
+	}
+	return FString();
+}
+
+FString UMRQAutoSegmentLibrary::ResolveFfmpegPath(const FString& Configured)
+{
+	FString Reason;
+	const FString Path = FMRQAutoSegmentCore::ResolveFfmpegPath(Configured, Reason);
+	UE_LOG(LogTemp, Display, TEXT("[MRQAutoSegment] ffmpeg: %s (%s)"), *Path, *Reason);
+	return Path;
 }
 
 UMoviePipelineQueue* UMRQAutoSegmentLibrary::GetEditorQueue()

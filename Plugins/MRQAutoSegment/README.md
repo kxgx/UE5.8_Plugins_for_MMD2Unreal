@@ -202,6 +202,46 @@ YourProject/
 
 **它不参与分段计算** —— 只落到生成的任务上,所以改动它不会重算分段。该值也会存进预设。
 
+### 预热帧数
+
+```
+预热帧数   [64]
+```
+
+对应引擎的 **Num Warm Up Frames**:正式输出第一帧之前先空跑这么多帧,让 TSR / TAA / Lumen
+这类时间性效果收敛,免得开头几帧还没稳定就被写出去。默认 **64**,填 0 关闭。
+
+和采样数一样落在 **Globals 分支**(`MovieGraphWarmUpSettingNode`),对哪种渲染器都生效;
+同样**不参与分段计算**,并且会存进预设。
+
+### 渲染完成后自动合并
+
+勾上「渲染完成后自动合并」后,插件会盯着影片渲染队列:**这次渲染一结束**,就按帧范围顺序把
+各段拼成一个文件:
+
+```
+{project_dir}/Saved/MovieRenders/<序列名>_0000-0724.mp4
+{project_dir}/Saved/MovieRenders/<序列名>_0725-1449.mp4
+        ↓  自动合并
+{project_dir}/Saved/MovieRenders/<序列名>_full.mp4
+```
+
+- **不是链式渲染。** 插件不会替你逐段起渲染、也不会碰你的队列;它只在渲染结束后做一个收尾
+  动作。之前那版"每段单独渲染"的驱动会让编辑器闪退,已经删掉了
+- 判定方式是队列子系统的 `IsRendering()` **由真变假**那一刻,所以**在「影片渲染队列」窗口
+  手动点渲染一样有效**
+- 只在**面板开着**的时候生效(面板关了就没人盯着了)
+- 分段文件按**帧范围标签**匹配,不需要解析你的文件名格式
+- 用 ffmpeg 的 concat demuxer + `-c copy`,**不重新编码**
+- 想手动再合一次,点旁边的「立即合并一次」
+
+相关控件:
+
+| 控件 | 说明 |
+|---|---|
+| **ffmpeg 路径** | 留空自动找:`PATH` → `%USERPROFILE%\scoop\shims` → `%LOCALAPPDATA%\Microsoft\WinGet\Links` → `%ProgramData%\chocolatey\bin` → `%SystemDrive%\ffmpeg\bin`。也可点「浏览…」 |
+| **合并成功后删除分段文件** | 默认关;确认拼接没问题后再勾 |
+
 ### 文件名
 
 面板里的**文件名格式**是引擎原本的那套 token(`{sequence_name}`、`{date}`、`{shot_name}`…),

@@ -51,6 +51,9 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+	/** Watches for a render finishing, so the merge can run afterwards. */
+	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
+
 	/**
 	 * Points the panel at a sequence: selects it in the picker and takes the frame range straight
 	 * from its playback range. Called by the Sequencer toolbar button, which passes whatever
@@ -89,6 +92,32 @@ private:
 	/** Temporal sub-samples written onto the generated jobs. See FMRQJobTemplate. */
 	int32 TemporalSampleCount = 8;
 
+	/** Warm-up frames written onto the generated jobs. See FMRQJobTemplate. */
+	int32 NumWarmUpFrames = 64;
+
+	// ------------------------------------------------------------ merge after render
+
+	/** Join the segments once a render finishes. */
+	bool bAutoMerge = false;
+
+	/** ffmpeg used for the join. Empty = look it up on PATH. */
+	FString FfmpegPath;
+
+	/** Remove the segment files once the join succeeded. */
+	bool bDeleteSegmentsAfterMerge = false;
+
+	/** Range labels of the last generated plan, in order; empty means nothing to merge. */
+	TArray<FString> MergeLabels;
+
+	/** Output directory those labels were written to, with tokens already resolved. */
+	FString MergeDirectory;
+
+	/** True between "a render started" and "that render finished". */
+	bool bRenderWasActive = false;
+
+	/** Runs the join and reports into the status line. */
+	void RunMerge();
+
 	/** Why the current bytes-per-pixel number is what it is. Shown next to the field. */
 	FString BytesPerPixelReason;
 
@@ -123,6 +152,8 @@ private:
 	FReply HandleProbeClicked();
 	FReply HandleGenerateClicked();
 	FReply HandleClearClicked();
+	FReply HandleBrowseFfmpegClicked();
+	FReply HandleMergeNowClicked();
 	FReply HandleRangeFromSequenceClicked();
 	FReply HandleSavePresetClicked();
 	FReply HandleLoadPresetClicked();

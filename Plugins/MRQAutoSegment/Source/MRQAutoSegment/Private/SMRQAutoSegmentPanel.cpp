@@ -7,12 +7,15 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "DesktopPlatformModule.h"
 #include "Editor.h"
 #include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
 #include "LevelSequence.h"
 #include "MovieScene.h"
 #include "MovieSceneTimeHelpers.h"
 #include "MoviePipelineQueue.h"
+#include "MoviePipelineQueueSubsystem.h"
 #include "Graph/Nodes/MovieGraphFileOutputNode.h"
 #include "Graph/MovieGraphProjectSettings.h"
 #include "HAL/FileManager.h"
@@ -421,6 +424,34 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildSettingsSection()
 				])
 		]
 
+		// Warm-up frames. Same Globals-branch mechanism as the temporal samples, so it also
+		// applies to whichever renderer the graph uses.
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			MakeRow(LOCTEXT("LabelWarmUp", "预热帧数"),
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SNumericEntryBox<int32>)
+					.AllowSpin(false)
+					.MinValue(0)
+					.MaxValue(1000)
+					.MinDesiredValueWidth(48.0f)
+					.Value_Lambda([this]() { return TOptional<int32>(NumWarmUpFrames); })
+					.OnValueChanged_Lambda([this](int32 NewValue) { NumWarmUpFrames = NewValue; })
+				]
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(12.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					.AutoWrapText(true)
+					.Text(LOCTEXT("WarmUpHint", "Num Warm Up Frames：正式输出前先空跑这么多帧，让 TSR / TAA / Lumen 收敛。0 = 关闭"))
+				])
+		]
+
 		// --- frame range --------------------------------------------------------
 		+ SVerticalBox::Slot()
 		.AutoHeight()
@@ -748,6 +779,85 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildPlanSection()
 			]
 		]
 
+		// --- merge after render --------------------------------------------------
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 8.0f, 0.0f, 0.0f)
+		[
+			MakeHeader(LOCTEXT("MergeHeader", "渲染完成后自动合并"))
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+			.AutoWrapText(true)
+			.Text(LOCTEXT("MergeBlurb",
+				"勾上后，插件会盯着影片渲染队列：这次渲染一结束，就按帧范围顺序把各段用 ffmpeg "
+				"无损拼接成一个文件（-c copy，不重新编码）。只在面板开着的时候生效。"))
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+		[
+			MakeRow(LOCTEXT("FfmpegLabel", "ffmpeg 路径"),
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				[
+					SNew(SEditableTextBox)
+					.Text_Lambda([this]() { return FText::FromString(FfmpegPath); })
+					.HintText(LOCTEXT("FfmpegHint", "留空 = 从 PATH 自动查找"))
+					.OnTextCommitted_Lambda([this](const FText& InText, ETextCommit::Type) { FfmpegPath = InText.ToString(); })
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("Browse", "浏览…"))
+					.OnClicked(this, &SMRQAutoSegmentPanel::HandleBrowseFfmpegClicked)
+				]
+			)
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 12.0f, 0.0f)
+			[
+				SNew(SCheckBox)
+				.IsChecked_Lambda([this]() { return bAutoMerge ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState InState) { bAutoMerge = (InState == ECheckBoxState::Checked); })
+				[
+					SNew(STextBlock).Text(LOCTEXT("AutoMerge", "渲染完成后自动合并"))
+				]
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 12.0f, 0.0f)
+			[
+				SNew(SCheckBox)
+				.IsChecked_Lambda([this]() { return bDeleteSegmentsAfterMerge ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+				.OnCheckStateChanged_Lambda([this](ECheckBoxState InState) { bDeleteSegmentsAfterMerge = (InState == ECheckBoxState::Checked); })
+				[
+					SNew(STextBlock).Text(LOCTEXT("DeleteSegments", "合并成功后删除分段文件"))
+				]
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth()
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("MergeNow", "立即合并一次"))
+				.ToolTipText(LOCTEXT("MergeNowTip", "不等渲染结束，现在就把上一次生成的分段拼起来"))
+				.OnClicked(this, &SMRQAutoSegmentPanel::HandleMergeNowClicked)
+			]
+		]
+
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0.0f, 4.0f, 0.0f, 0.0f)
@@ -759,6 +869,121 @@ TSharedRef<SWidget> SMRQAutoSegmentPanel::BuildPlanSection()
 }
 
 // ---------------------------------------------------------------------------- logic
+
+void SMRQAutoSegmentPanel::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if (!bAutoMerge || MergeLabels.Num() == 0)
+	{
+		return;
+	}
+
+	UMoviePipelineQueueSubsystem* Subsystem = GEditor
+		? GEditor->GetEditorSubsystem<UMoviePipelineQueueSubsystem>()
+		: nullptr;
+	if (Subsystem == nullptr)
+	{
+		return;
+	}
+
+	// Watch for the falling edge rather than hooking an executor: the render may be started from
+	// the Movie Render Queue window, and this way nothing is re-entered while it is running.
+	const bool bRendering = Subsystem->IsRendering();
+
+	if (bRendering)
+	{
+		bRenderWasActive = true;
+		return;
+	}
+
+	if (bRenderWasActive)
+	{
+		bRenderWasActive = false;
+		RunMerge();
+	}
+}
+
+void SMRQAutoSegmentPanel::RunMerge()
+{
+	const TArray<FString> Labels = MergeLabels;
+	const FString Directory = MergeDirectory;
+
+	// One shot per generated plan; re-arm by generating again.
+	MergeLabels.Reset();
+
+	FString Error;
+	TArray<FString> Files;
+	if (!FMRQAutoSegmentCore::CollectSegmentFiles(Directory, Labels, Files, Error))
+	{
+		SetStatus(FString::Printf(TEXT("合并跳过：%s"), *Error));
+		return;
+	}
+
+	const FString Extension = FPaths::GetExtension(Files[0]);
+	const FString OutputFile = FPaths::Combine(
+		Directory, FString::Printf(TEXT("%s_full.%s"), *GetSelectedSequenceName(), *Extension));
+
+	FString Reason;
+	const FString Ffmpeg = FMRQAutoSegmentCore::ResolveFfmpegPath(FfmpegPath, Reason);
+
+	SetStatus(FString::Printf(TEXT("正在合并 %d 段 → %s（ffmpeg %s）"), Files.Num(), *OutputFile, *Reason));
+
+	if (!FMRQAutoSegmentCore::MergeVideos(Ffmpeg, Files, OutputFile, Error))
+	{
+		SetStatus(FString::Printf(TEXT("合并失败：%s"), *Error));
+		return;
+	}
+
+	if (bDeleteSegmentsAfterMerge)
+	{
+		for (const FString& File : Files)
+		{
+			IFileManager::Get().Delete(*File, /*RequireExists=*/false, /*EvenReadOnly=*/true, /*Quiet=*/true);
+		}
+	}
+
+	SetStatus(FString::Printf(TEXT("已合并 %d 段为 %s"), Files.Num(), *OutputFile));
+}
+
+FReply SMRQAutoSegmentPanel::HandleBrowseFfmpegClicked()
+{
+	IDesktopPlatform* Desktop = FDesktopPlatformModule::Get();
+	if (Desktop == nullptr)
+	{
+		return FReply::Handled();
+	}
+
+	const void* ParentWindow = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
+
+	TArray<FString> Chosen;
+	const bool bPicked = Desktop->OpenFileDialog(
+		ParentWindow,
+		TEXT("选择 ffmpeg 可执行文件"),
+		FPaths::GetPath(FfmpegPath),
+		TEXT(""),
+		TEXT("可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*"),
+		EFileDialogFlags::None,
+		Chosen);
+
+	if (bPicked && Chosen.Num() > 0)
+	{
+		FfmpegPath = Chosen[0];
+	}
+	return FReply::Handled();
+}
+
+FReply SMRQAutoSegmentPanel::HandleMergeNowClicked()
+{
+	if (MergeLabels.Num() == 0)
+	{
+		SetStatus(TEXT("先生成一次渲染队列，插件才知道要合并哪些分段。"));
+		return FReply::Handled();
+	}
+
+	RunMerge();
+	return FReply::Handled();
+}
 
 void SMRQAutoSegmentPanel::FillTemplate(FMRQJobTemplate& OutTemplate) const
 {
@@ -772,6 +997,7 @@ void SMRQAutoSegmentPanel::FillTemplate(FMRQJobTemplate& OutTemplate) const
 
 	// The temporal sample count only exists on the generated jobs; it never influences segmentation.
 	OutTemplate.TemporalSampleCount = TemporalSampleCount;
+	OutTemplate.NumWarmUpFrames = NumWarmUpFrames;
 
 	// Only pin an output type when a concrete one was picked; otherwise the generated graph decides.
 	if (SelectedOutputType.IsValid() && SelectedOutputType->Class != nullptr)
@@ -997,6 +1223,7 @@ void SMRQAutoSegmentPanel::CapturePreset(FMRQSegmentPreset& OutPreset) const
 		: FString();
 	OutPreset.Request = Request;
 	OutPreset.TemporalSampleCount = TemporalSampleCount;
+	OutPreset.NumWarmUpFrames = NumWarmUpFrames;
 }
 
 void SMRQAutoSegmentPanel::ApplyPreset(const FMRQSegmentPreset& InPreset)
@@ -1006,6 +1233,7 @@ void SMRQAutoSegmentPanel::ApplyPreset(const FMRQSegmentPreset& InPreset)
 	Request = InPreset.Request;
 
 	TemporalSampleCount = FMath::Max(InPreset.TemporalSampleCount, 1);
+	NumWarmUpFrames = FMath::Max(InPreset.NumWarmUpFrames, 0);
 
 	// Output format. An empty class path means the preset was saved on the "(default)" entry.
 	SelectedOutputType = nullptr;
@@ -1415,6 +1643,17 @@ FReply SMRQAutoSegmentPanel::HandleGenerateClicked()
 
 	const int32 Created = FMRQAutoSegmentCore::GenerateJobs(
 		Queue, Sequence, GetCurrentMapPath(), Plan, Template);
+
+	// Arm the post-render merge for exactly this plan.
+	MergeLabels.Reset();
+	MergeDirectory = FMRQAutoSegmentCore::ResolveDirectoryTokens(OutputDirectory);
+	if (bAutoMerge)
+	{
+		for (const FMRQSegmentPlanEntry& Entry : Plan.Segments)
+		{
+			MergeLabels.Add(Entry.Label);
+		}
+	}
 
 	if (StatusBlock.IsValid())
 	{

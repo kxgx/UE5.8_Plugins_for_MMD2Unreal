@@ -46,8 +46,8 @@ public:
 	 * Writes one Movie Render Queue job per segment.
 	 *
 	 * The range label is appended to FileNameFormat, so a FileNameFormat of "{sequence_name}"
-	 * produces files named like "<sequence>_0000-1023" and "<sequence>_1024-2047". Each job also
-	 * gets its own output folder, "<OutputDirectory>/<range label>/".
+	 * produces files named like "<sequence>_0000-1023" and "<sequence>_1024-2047", all in
+	 * OutputDirectory.
 	 *
 	 * @param ResolutionProfile    Name of one of the project's named resolutions
 	 *                             (Project Settings -> Movie Render Pipeline -> Named
@@ -56,6 +56,8 @@ public:
 	 *                             invent a name, the entry has to exist.
 	 * @param TemporalSampleCount  Temporal sub-samples written onto every job. It lands on the
 	 *                             graph's sampling method node, so it applies to any renderer.
+	 * @param NumWarmUpFrames      Frames rendered before the first output frame, so temporal
+	 *                             effects have converged. 0 disables the warm-up.
 	 * @return Number of jobs created.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
@@ -67,7 +69,8 @@ public:
 		const FString& OutputDirectory,
 		const FString& FileNameFormat,
 		const FString& ResolutionProfile,
-		int32 TemporalSampleCount = 8);
+		int32 TemporalSampleCount = 8,
+		int32 NumWarmUpFrames = 64);
 
 	/** Removes jobs whose name starts with JobNamePrefix. @return Number removed. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
@@ -79,6 +82,24 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
 	static int32 DumpGeneratedGraphs(UMoviePipelineQueue* Queue, const FString& JobNamePrefix);
+
+	/**
+	 * Joins Files into OutputFile with ffmpeg's concat demuxer, stream copying so nothing is
+	 * re-encoded. This is what the panel's "merge after render" option calls.
+	 *
+	 * @return Empty on success, otherwise ffmpeg's own message. A returned string rather than a
+	 *         bool plus an out-param, because UE Python drops the bool of such a function and
+	 *         hands back only the out-param.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
+	static FString MergeVideos(const TArray<FString>& Files, const FString& OutputFile);
+
+	/**
+	 * Locates ffmpeg the same way the merge does: the given path if it exists, then PATH, then
+	 * the locations the usual Windows package managers install into.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")
+	static FString ResolveFfmpegPath(const FString& Configured);
 
 	/** The Movie Render Queue the editor is currently showing. */
 	UFUNCTION(BlueprintCallable, Category = "MRQ Auto Segment")

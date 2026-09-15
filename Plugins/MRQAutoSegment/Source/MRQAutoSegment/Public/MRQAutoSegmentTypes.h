@@ -267,4 +267,8 @@ struct FMRQSegmentPreset
 	/** Sub-samples across time, written onto every generated job. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset", meta = (ClampMin = 1))
 	int32 TemporalSampleCount = 8;
+
+	/** Frames rendered before the first output frame. 0 disables the warm-up. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preset", meta = (ClampMin = 0))
+	int32 NumWarmUpFrames = 64;
 };
