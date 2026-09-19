@@ -1,12 +1,11 @@
 # 预编译版 (Prebuilt)
 
-这三个插件的**预编译（二进制）版本**。丢进工程就能用，**不需要工程是 C++ 工程，也不需要编译**。
+这两个插件的**预编译（二进制）版本**。丢进工程就能用，**不需要工程是 C++ 工程，也不需要编译**。
 
 | 插件 | 作用 |
 |---|---|
 | `HEVC10Output` | 10-bit H.265 (HEVC) MP4 输出节点，帧直接走管道进 ffmpeg |
 | `MMDSequencerPreview` | 让 MMD2Unreal 的 VMD 动作跟随 Sequencer 时间轴（视口 + 渲染） |
-| `MRQAutoSegment` | 按内存/显存空闲容量自动分段，生成带帧范围的渲染队列 |
 
 ## 环境要求
 
@@ -34,8 +33,6 @@
       Binaries/Win64/UnrealEditor-HEVC10Output.dll
       Binaries/Win64/UnrealEditor.modules
     MMDSequencerPreview/
-      ...
-    MRQAutoSegment/
       ...
 ```
 
@@ -67,4 +64,3 @@
 
 - [`HEVC10Output/README.md`](Plugins/HEVC10Output/README.md) —— 需要 ffmpeg，在 PATH 里或者节点上指定路径
 - [`MMDSequencerPreview/README.md`](Plugins/MMDSequencerPreview/README.md) —— 控制台变量、什么时候会同步
-- [`MRQAutoSegment/README.md`](Plugins/MRQAutoSegment/README.md) —— 分段算法、分辨率只能用项目命名预设、渲染后自动合并

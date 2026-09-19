@@ -6,7 +6,13 @@
 |---|---|
 | **[HEVC10Output](Plugins/HEVC10Output)** | 给 Movie Render Graph 加一个 **10-bit H.265 (HEVC) MP4** 输出节点。渲染帧通过 stdin 管道直喂 ffmpeg，**无中间图像序列文件**，编码与渲染并行。 |
 | **[MMDSequencerPreview](Plugins/MMDSequencerPreview)** | Sequencer 打开时，自动驱动 **MMD2Unreal** 导入的角色动画在编辑器视口里按时间轴回放。 |
-| **[MRQAutoSegment](Plugins/MRQAutoSegment)** | 探测空闲内存 / 显存（只用其中 80%，可调），把长镜头切成多个渲染任务，每个任务的输出文件名带自己的帧范围。 |
+
+**两种用法，按需选一种：**
+
+| 你想 | 用哪份 | 需要 C++ 工程 |
+|---|---|---|
+| 丢进去就用 | [`Prebuilt/`](Prebuilt)（预编译二进制） | ❌ 不需要 |
+| 自己改代码 / 自己编 | [`Plugins/`](Plugins)（纯源码） | ✅ 需要 |
 
 引擎版本：**UE 5.8**（Windows）
 构建工具：Visual Studio 2022 + C++ 工具链
@@ -15,7 +21,7 @@
 
 ## 安装
 
-两个插件都是**纯源码**，需要跟你的工程一起编译。
+[`Plugins/`](Plugins) 里是**纯源码**，需要跟你的工程一起编译。
 
 ```bash
 # 把 Plugins 目录拷到你的工程根目录（和 .uproject 同级）
@@ -45,7 +51,10 @@ YourProject/
     -Project="<你的工程>\YourProject.uproject" -WaitMutex
 ```
 
-> 如果你只想用其中一个，单独拷对应目录即可，三个插件互不依赖。
+> 如果你只想用其中一个，单独拷对应目录即可，两个插件互不依赖。
+>
+> 不想碰 C++ 工程的话，直接用 [`Prebuilt/`](Prebuilt)：拷进 `Plugins/` 重启编辑器即可，
+> 但要求引擎 `BuildId` 是 `55116800`（就是 UE 5.8.2 的 `CompatibleChangelist`）。
 
 ---
 
@@ -127,80 +136,20 @@ AnimSequence.AssetUserData 中存在类名为 "MMDVmdAssetUserData" 的条目
 ```
 
 **插件不链接、不调用、不依赖 MMD2Unreal**，只做只读的标记判断，所以不会冲突。
-另外会识别类名含 `MMDCineCameraActor` 的 Actor（VMD 镜头数据）。
+**插件不识别、也不触碰任何相机 Actor**（早先版本会强制相机 tick，那是持久化的 UPROPERTY，
+会给渲染里引入一个没有材质的球体，这段代码已经删掉）。
 
 ### 控制台命令
 
 | 命令 | 说明 |
 |---|---|
 | `MMDSequencerPreview.Enable 1/0` | 启用 / 停用（停用会立即还原） |
+| `MMDSequencerPreview.DriveInPIE 1/0` | PIE 里序列播放时是否同步，**默认开**（MRQ 用 PIE 渲染时要它） |
 | `MMDSequencerPreview.Apply` | 立即手动同步一次 |
 
 日志类别：`LogMMDSequencerPreview`
 
 详细说明见 [插件 README](Plugins/MMDSequencerPreview/README.md)。
-
----
-
-## MRQAutoSegment
-
-### 为什么需要它
-
-一次几千帧的长镜头渲染，最大的风险不是慢，而是**跑到 90% 崩了，一晚白干**。
-但"切多长一段"没有标准答案——它取决于这台机器还剩多少内存和显存。
-
-### 实现方式
-
-探测 `FPlatformMemory::GetStats()` 和 `RHIGetTextureMemoryStats()`，然后：
-
-```
-每段帧数 = min(
-    空闲内存 × 内存使用上限 ÷ (帧缓冲 × 每帧增长系数),
-    空闲显存 × 显存使用上限 ÷ (帧缓冲 × 每帧增长系数),
-    用户设的每段上限
-)
-```
-
-**使用上限默认 80%，在面板里可调**；只看内存和显存，磁盘容量不参与计算。
-
-**每像素字节自动跟随输出格式**：选 HEVC 10-bit 就是 8、选 PNG 就是 4——这个值决定帧缓冲大小，
-填错一半分段就会长一倍，而它由输出格式的位深决定、不是由分辨率决定。推断理由会显示在面板上，
-需要手工指定时取消勾选即可。
-
-**分辨率是预设下拉 + 自定义**，预设直接读项目的命名分辨率（和 Movie Graph 输出节点里看到的是同一份）。
-
-面板会把**每条约束算出的帧数逐条列出**，给真正决定结果的那条打 `★`，并把算式
-（空闲的百分之多少 = 多少字节 ÷ 每帧多少）一起显示出来——数字是可见、可调、可质疑的，不是黑箱。
-
-任务用 **Basic 配置模式**创建。该模式在渲染前**即时生成 `UMovieGraphConfig`**，
-所以 `FileNameFormat` / `CustomStartFrame` / `CustomEndFrame` 都只是普通字段，可以逐任务设置，
-**既不用复制也不用改动你自己的 Movie Graph 资产**。
-
-### 用法
-
-直接在 **Sequencer 工具栏**点 **「MRQ 分段」**（最省事：面板会自动选中你正在编辑的序列，
-并把帧范围填成它的播放范围）。也可以用关卡编辑器工具栏的按钮、菜单 **工具 → MRQ 分段**，
-或控制台 `MRQAutoSegment.Open`。调好参数后点「生成渲染队列」。
-
-文件名：帧范围自动追加在你的格式串末尾——
-`{sequence_name}` → `{sequence_name}_0000-0733`、`{sequence_name}_0734-1467` …
-
-也完全可以用 Python 驱动，绕开 UI：
-
-```python
-import unreal
-lib = unreal.MRQAutoSegmentLibrary
-req = unreal.MRQSegmentRequest()
-req.set_editor_property("range_end", 6149)
-req.set_editor_property("ram_use_limit", 0.8)   # 空闲内存的 80%
-req.set_editor_property("vram_use_limit", 0.8)  # 空闲显存的 80%
-plan = lib.plan_from_hardware(req)
-lib.generate_jobs(lib.get_editor_queue(), unreal.load_asset("/Game/MySequence"),
-                  "/Game/Main", plan, "{project_dir}/Saved/MovieRenders", "{sequence_name}",
-                  unreal.IntPoint(3840, 2160))
-```
-
-算法推导过程和已知边界见 [插件 README](Plugins/MRQAutoSegment/README.md)。
 
 ---
 
@@ -212,12 +161,34 @@ lib.generate_jobs(lib.get_editor_queue(), unreal.load_asset("/Game/MySequence"),
   ```bash
   ffmpeg -i video.mp4 -i audio.wav -c:v copy -c:a aac -b:a 320k -shortest out.mp4
   ```
-- **MRQAutoSegment 的"空闲显存"只统计本进程。** `RHIGetTextureMemoryStats()` 看得到显存总量和
-  UE 自己分配了多少，但**看不到其他程序占用的显存**，所以那是上界，默认只用它的 80% 正是为了
-  覆盖这部分。每帧增长系数也是估计值而非实测值——面板把算式显示出来就是为了让你能反驳它。
-- **MRQAutoSegment 生成的 Basic 模式任务会即时生成自己的图**，不复用你的 Movie Graph 资产。
-  如果你的图里有精细的多分支 / 自定义 Pass 配置，它们不会被带上。
-- 三个插件都在 **UE 5.8 / Windows** 上开发验证，未在其他版本或平台测试。
+- **MMDSequencerPreview 只在「序列真的在跑」时同步。** 普通 Play-In-Editor（世界里没有序列
+  播放器）不碰，免得干扰正常游戏测试；MRQ 渲染走的是 PIE 或独立 `-game` 进程，两条路都已覆盖
+  （`-game` 那路是靠序列播放器自己 tick 出来的时间驱动的）。
+- 两个插件都在 **UE 5.8 / Windows** 上开发验证，未在其他版本或平台测试。
+
+---
+
+## 附带工具
+
+[`Tools/`](Tools) 里是配套脚本，跟插件本体无关，按需使用：
+
+| 脚本 | 用途 |
+|---|---|
+| [`ToHEVC10.ps1`](Tools/ToHEVC10.ps1) | 把已有视频转成 10-bit HEVC MP4。默认 `hevc_nvenc`（GPU，快），`-Encoder x265` 走 CPU（慢但同码率更小）。渲染时没走插件、事后想补转就用它。 |
+| [`ResetUECaches.ps1`](Tools/ResetUECaches.ps1) | 重置 UE 5.8 的 DDC / Intermediate / 着色器缓存。**默认只预览**，加 `-Apply` 才真删。 |
+
+```powershell
+# 看看会删什么（什么都不动）
+.\Tools\ResetUECaches.ps1 -ProjectPath "D:\MyProject"
+
+# 工程已经删了 / 只想清引擎级缓存
+.\Tools\ResetUECaches.ps1 -Scope Engine -Apply
+```
+
+`ResetUECaches.ps1` 对 `Binaries`、`Content`、`Config`、`Source`、`Logs`、`MovieRenders`
+这类东西有硬性保护，路径命中就直接跳过；编辑器开着时会拒绝执行（除非只是预览）。
+
+---
 
 ## 许可
 
