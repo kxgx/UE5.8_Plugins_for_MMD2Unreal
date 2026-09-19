@@ -31,3 +31,13 @@ Saved/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# The Prebuilt tree exists precisely to ship the compiled plugins, so its binaries and module
+# manifests are kept. Every directory on the way down has to be re-included too: git cannot
+# re-include a file while a parent directory is still excluded.
+!Prebuilt/Plugins/*/Binaries/
+!Prebuilt/Plugins/*/Binaries/Win64/
+!Prebuilt/Plugins/*/Binaries/Win64/*.dll
+!Prebuilt/Plugins/*/Binaries/Win64/*.modules
+# Debug symbols stay out: 60-80 MB each and nothing needs them to load the plugin.
+Prebuilt/Plugins/**/*.pdb

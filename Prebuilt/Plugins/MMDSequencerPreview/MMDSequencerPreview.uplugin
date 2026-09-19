@@ -1,4 +1,4 @@
-﻿{
+{
 	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "1.0",
@@ -9,7 +9,10 @@
 	"EngineVersion": "5.8.0",
 	"CanContainContent": false,
 	"IsBetaVersion": true,
-	"Installed": false,
+	"Installed": true,
+	"SupportedTargetPlatforms": [
+		"Win64"
+	],
 	"Modules": [
 		{
 			"Name": "MMDSequencerPreview",
