@@ -7,6 +7,7 @@
 #include "Animation/AnimationAsset.h"
 #include "Animation/AnimSequenceBase.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Editor.h"
 #include "Engine/AssetUserData.h"
 #include "Engine/World.h"
@@ -79,6 +80,85 @@ namespace
 		return InTime.Rate.AsDecimal() > 0.0
 			? InTime.Time.AsDecimal() / InTime.Rate.AsDecimal()
 			: 0.0;
+	}
+
+	/**
+	 * Logs every mesh actor in the world that is actually being rendered.
+	 *
+	 * Written to answer "what is that sphere in the render?" without guessing: a sphere that
+	 * shows up in a render but not in the editor viewport has to be something present in the
+	 * render world, and this lists everything there with its visibility and material state.
+	 *
+	 * Read-only. Runs once per world.
+	 */
+	static void DumpRenderActors(UWorld* InWorld)
+	{
+		UE_LOG(LogMMDSequencerPreview, Log, TEXT("=== render world actor dump: %s ==="),
+			*GetNameSafe(InWorld));
+
+		int32 MeshActors = 0;
+		for (TActorIterator<AActor> It(InWorld); It; ++It)
+		{
+			AActor* Actor = *It;
+
+			// Only things that can actually put pixels on screen.
+			TArray<UPrimitiveComponent*> Primitives;
+			Actor->GetComponents<UPrimitiveComponent>(Primitives);
+			if (Primitives.Num() == 0)
+			{
+				continue;
+			}
+
+			++MeshActors;
+			for (UPrimitiveComponent* Primitive : Primitives)
+			{
+				if (Primitive == nullptr)
+				{
+					continue;
+				}
+
+				FString MeshName = TEXT("-");
+				if (const UStaticMeshComponent* Static = Cast<UStaticMeshComponent>(Primitive))
+				{
+					MeshName = GetNameSafe(Static->GetStaticMesh());
+				}
+				else if (const USkeletalMeshComponent* Skeletal = Cast<USkeletalMeshComponent>(Primitive))
+				{
+					MeshName = GetNameSafe(Skeletal->GetSkeletalMeshAsset());
+				}
+
+				// A mesh with no material is exactly what a "materialless sphere" looks like.
+				const int32 MaterialCount = Primitive->GetNumMaterials();
+				int32 EmptySlots = 0;
+				for (int32 Slot = 0; Slot < MaterialCount; ++Slot)
+				{
+					if (Primitive->GetMaterial(Slot) == nullptr)
+					{
+						++EmptySlots;
+					}
+				}
+
+				const FBoxSphereBounds Bounds = Primitive->Bounds;
+#if WITH_EDITOR
+				const FString Label = Actor->GetActorLabel();
+#else
+				const FString Label = Actor->GetName();
+#endif
+				UE_LOG(LogMMDSequencerPreview, Log,
+					TEXT("[actor] %-40s [%s]  comp=%s  mesh=%s  visible=%d  hiddenInGame=%d  mats=%d(empty %d)  radius=%.0f  at=(%.0f, %.0f, %.0f)"),
+					*Label,
+					*Actor->GetClass()->GetName(),
+					*Primitive->GetClass()->GetName(),
+					*MeshName,
+					Primitive->IsVisible() ? 1 : 0,
+					Actor->IsHidden() ? 1 : 0,
+					MaterialCount, EmptySlots,
+					Bounds.SphereRadius,
+					Bounds.Origin.X, Bounds.Origin.Y, Bounds.Origin.Z);
+			}
+		}
+
+		UE_LOG(LogMMDSequencerPreview, Log, TEXT("=== %d actor(s) with renderable components ==="), MeshActors);
 	}
 }
 
@@ -280,21 +360,40 @@ bool FMMDPreviewDriver::Tick(float DeltaTime)
 		return true;
 	}
 
-	if (GEditor == nullptr)
-	{
-		return true;
-	}
-
-	// PIE used to be left strictly alone, on the grounds that the game world plays these
-	// animations itself. It does not, for MMD motion: the VMD lives on the skeletal mesh
-	// component, not on a Sequencer track, so nothing ties it to sequence time. Movie Render
-	// Queue renders through PIE, so that gap made every render job replay the motion from its
-	// own frame 0. Follow the sequence player in PIE for the same reason we follow Sequencer in
-	// the editor - but only while a sequence is actually running there.
 	UWorld* TargetWorld = nullptr;
 	double TimeSeconds = 0.0;
 
-	if (GEditor->PlayWorld != nullptr)
+	if (GEditor == nullptr)
+	{
+		// A standalone -game process: that is how "Render (New Process)" runs, and it has no
+		// GEditor at all. The old early-out here meant MMD motion was never synced in that mode,
+		// so every render job replayed the dance from its own frame 0.
+		UWorld* GameWorld = nullptr;
+		if (GEngine != nullptr)
+		{
+			for (const FWorldContext& Context : GEngine->GetWorldContexts())
+			{
+				if (Context.WorldType == EWorldType::Game || Context.WorldType == EWorldType::PIE)
+				{
+					GameWorld = Context.World();
+					if (GameWorld != nullptr)
+					{
+						break;
+					}
+				}
+			}
+		}
+
+		ULevelSequencePlayer* Player = FindSequencePlayer(GameWorld);
+		if (Player == nullptr)
+		{
+			return true;
+		}
+
+		TargetWorld = GameWorld;
+		TimeSeconds = ToSeconds(Player->GetCurrentTime());
+	}
+	else if (GEditor->PlayWorld != nullptr)
 	{
 		if (CVarMMDPreviewInPIE.GetValueOnGameThread() == 0)
 		{
@@ -332,6 +431,15 @@ bool FMMDPreviewDriver::Tick(float DeltaTime)
 	}
 
 	const float FrameTime = static_cast<float>(TimeSeconds);
+
+	// Diagnostic: say once per world what is actually in it, so a stray mesh in a render can be
+	// named instead of guessed at.
+	static TWeakObjectPtr<UWorld> LastDumpedWorld;
+	if (TargetWorld != LastDumpedWorld.Get())
+	{
+		LastDumpedWorld = TargetWorld;
+		DumpRenderActors(TargetWorld);
+	}
 
 	// --- MMD motion: keep SingleNode components evaluating at the sequence's time ----
 	for (TObjectIterator<USkeletalMeshComponent> It; It; ++It)
