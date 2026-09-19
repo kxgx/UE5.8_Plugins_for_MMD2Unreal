@@ -3,7 +3,7 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "MMD Sequencer Preview",
-	"Description": "While a Level Sequence is open in Sequencer, drives animations imported by MMD2Unreal (VMD motion) and MMD camera actors (VMD camera) so they preview live in the editor viewport, in sync with the Sequencer timeline. Editor-only; never modifies assets or levels.",
+	"Description": "While a Level Sequence is open in Sequencer (or playing in PIE / a standalone -game render process), drives animations imported by MMD2Unreal (VMD motion) on skeletal mesh components so they preview live in the editor viewport and stay in sync with the Sequencer timeline. Editor-only; never modifies assets or levels, and never touches camera actors.",
 	"Category": "Animation",
 	"CreatedBy": "DSH",
 	"EngineVersion": "5.8.0",
