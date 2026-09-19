@@ -26,9 +26,6 @@ namespace
 	/** Marker class name MMD2Unreal attaches to every VMD-imported asset. */
 	static const TCHAR* GMmdUserDataClassName = TEXT("MMDVmdAssetUserData");
 
-	/** Class-name fragment of MMD2Unreal's camera actor (AMMDCineCameraActor). */
-	static const TCHAR* GMmdCameraClassFragment = TEXT("MMDCineCameraActor");
-
 	static TAutoConsoleVariable<int32> CVarMMDPreviewEnabled(
 		TEXT("MMDSequencerPreview.Enable"),
 		1,
@@ -269,12 +266,6 @@ bool FMMDPreviewDriver::IsMMDMotionComponent(const USkeletalMeshComponent* InCom
 	return IsMMDVmdAsset(AnimToPlay);
 }
 
-bool FMMDPreviewDriver::IsMMDCameraActor(const AActor* InActor)
-{
-	return InActor != nullptr
-		&& InActor->GetClass()->GetName().Contains(GMmdCameraClassFragment);
-}
-
 bool FMMDPreviewDriver::Tick(float DeltaTime)
 {
 	if (!bEnabled || CVarMMDPreviewEnabled.GetValueOnGameThread() == 0)
@@ -384,24 +375,6 @@ bool FMMDPreviewDriver::Tick(float DeltaTime)
 		}
 
 		Component->SetPosition(FrameTime, /*bFireNotifies=*/false);
-	}
-
-	// --- MMD camera: make sure the VMD camera actor ticks in the viewport ------------
-	for (TActorIterator<AActor> It(TargetWorld); It; ++It)
-	{
-		AActor* Actor = *It;
-		if (!IsMMDCameraActor(Actor))
-		{
-			continue;
-		}
-		if (!Actor->PrimaryActorTick.bCanEverTick)
-		{
-			Actor->PrimaryActorTick.bCanEverTick = true;
-		}
-		if (!Actor->IsActorTickEnabled())
-		{
-			Actor->SetActorTickEnabled(true);
-		}
 	}
 
 	return true;

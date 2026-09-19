@@ -69,7 +69,6 @@ private:
 
 	static bool IsMMDVmdAsset(const UObject* InAsset);
 	static bool IsMMDMotionComponent(const USkeletalMeshComponent* InComponent);
-	static bool IsMMDCameraActor(const AActor* InActor);
 
 	/** Everything we overwrote on a component, so it can be put back exactly. */
 	struct FSavedComponentState

@@ -77,14 +77,22 @@ AnimSequence 的 AssetUserData 中包含 类名为 "MMDVmdAssetUserData" 的条�
 | `MMD动作/洛克茜/【鈴木ヒナ】...【ダンス】` | ✅ |
 | SkeletalMesh / Skeleton / 场景网格 | ❌ |
 
-另外还会识别类名含 `MMDCineCameraActor` 的 Actor（VMD 镜头数据），确保它在视口里 tick。
+另外，**不再识别也不再触碰任何相机 Actor。** 早先版本会遍历场景找类名含
+`MMDCineCameraActor` 的 Actor，并把它强制成「可 tick / 开启 tick」——这两项都是**持久化的
+UPROPERTY**（`ACameraActor` 默认 `bCanEverTick = false`），一旦被写进去并保存，相机就会在
+**所有上下文、包括渲染里**开始 tick，渲染画面里因此多出一个没有材质的球体。这段代码已经删除。
+
+> **已经被写进去的怎么修**：在 Sequencer 里选中 MMD 相机那个 spawnable，看 Details →
+> **Actor Tick** → **Can Ever Tick**，如果被勾上了就取消并保存。相机的默认值就是关。
 
 ## 不会和 MMD2Unreal 冲突
 
-- **不链接、不调用、不依赖 MMD2Unreal**。检测全靠上面那个字符串标记和类名，是单向的只读判断。
+- **不链接、不调用、不依赖 MMD2Unreal**。检测全靠上面那个字符串标记，是单向的只读判断。
 - **不改任何资产、关卡或序列**，也不保存任何东西。只动运行时的组件开关。
 - **不改动画模式**，不加轨道，不动绑定。
-- **PIE / 打包运行时完全不介入**（`GEditor->PlayWorld != nullptr` 时直接返回），游戏世界自己会播。
+- **不碰相机**：不改 tick 标志、不改可见性、不改变换。
+- 序列**没在跑**的 PIE 会话里完全不介入（找不到 sequence player 就直接返回），游戏世界自己会播；
+  序列在跑时（包括 MRQ 渲染）只按序列时间驱动骨骼网格组件。
 - 模块类型是 **Editor**，打包版本里根本不存在。
 
 ## 用法
